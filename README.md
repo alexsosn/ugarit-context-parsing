@@ -1,0 +1,44 @@
+# ugarit-context-parsing
+
+Structured extraction of the cultic-vocabulary **Workbooks** into per-worksheet
+CSV files, with the Ugaritic transliteration repaired to standard Unicode.
+
+## Source
+
+The worksheet PDFs and the thesis volumes are from:
+
+> Burns, Duncan Coe (2003). *Contents, texts and contexts: a contextualist
+> approach to the Ugaritic texts and their cultic vocabulary.* PhD thesis,
+> University of Sheffield.
+> <https://etheses.whiterose.ac.uk/id/eprint/15038/>
+
+## Contents
+
+- [`scripts/parse_workbooks_to_csv.py`](scripts/parse_workbooks_to_csv.py) — the parser.
+- [`output/`](output/) — 45 CSVs, one per source worksheet, plus
+  [`output/README.md`](output/README.md) documenting the column schema, the
+  legacy-font → Unicode transliteration repair (verified 99.7 % against the KTU
+  concordance and the DULAT dictionary), and the editorial corrections.
+
+## Usage
+
+```bash
+uv run --no-project scripts/parse_workbooks_to_csv.py
+```
+
+Regenerates every CSV under `output/` from the PDFs in `Workbooks/`.
+
+The source PDFs (`Workbooks/`, thesis volumes, `Appendix.pdf`) are large and are
+not tracked in git.
+
+## License and attribution
+
+The source Workbooks and thesis are © Duncan Coe Burns (2003) and are made
+available under a **Creative Commons Attribution-NonCommercial-NoDerivs 2.5**
+licence (CC BY-NC-ND 2.5).
+
+The CSV files in `output/` are a **derived reformatting** of that material. Because
+the source licence is **NoDerivatives**, publicly redistributing this derived
+dataset may not be permitted by that licence. It is intended for private,
+non-commercial research; review the original licence, and obtain the author's
+permission, before sharing or reusing it.
