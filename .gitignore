@@ -11,3 +11,6 @@ wheels/
 
 # Source PDFs and thesis volumes (large binaries, not tracked)
 *.pdf
+
+# Derived workbook data (local-only due to source license)
+output/**/*.csv

@@ -4,6 +4,10 @@ Faithful, lossless conversion of the 45 worksheet PDFs under `Workbooks/` into
 one CSV per worksheet, mirroring the source folder structure. Produced by
 [`scripts/parse_workbooks_to_csv.py`](../scripts/parse_workbooks_to_csv.py).
 
+The generated CSVs are local-only and ignored by Git because the source is
+licensed CC BY-NC-ND 2.5. Do not redistribute them without permission from the
+copyright holder.
+
 ```bash
 uv run --no-project scripts/parse_workbooks_to_csv.py
 ```
