@@ -14,3 +14,6 @@ wheels/
 
 # Derived workbook data (local-only due to source license)
 output/**/*.csv
+
+# Localized research note (kept locally; English version is published)
+/CONTEXTUALIST_APPROACH.ru.md

@@ -15,6 +15,9 @@ The worksheet PDFs and the thesis volumes are from:
 ## Contents
 
 - [`scripts/parse_workbooks_to_csv.py`](scripts/parse_workbooks_to_csv.py) — the parser.
+- [`CONTEXTUALIST_APPROACH.md`](CONTEXTUALIST_APPROACH.md) — an overview of the
+  dissertation's contextualist method, the significance of its annotation
+  scheme, and the role of the parser.
 - [`output/`](output/) — the local generation target for 45 ignored CSVs, one
   per source worksheet. [`output/README.md`](output/README.md) documents the
   column schema, the legacy-font → Unicode transliteration repair (verified
