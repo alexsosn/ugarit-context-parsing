@@ -1,28 +1,27 @@
-# Texts in Place: The Contextualist Approach to the Ugaritic Archives
+# The contextualist approach to the Ugaritic archives
 
-Duncan Coe Burns's dissertation, *Contents, Texts and Contexts: A Contextualist
-Approach to the Ugaritic Texts and Their Cultic Vocabulary*, proposes that
-Ugaritic texts should be read not as a collection of isolated works, but as
-objects found in particular buildings, rooms, and excavation points. Its central
-claim is simple: a tablet's findspot is not secondary metadata appended to the
-text. It is part of the evidence and potentially part of the text's meaning.
+Duncan Coe Burns's 2003 dissertation, *Contents, Texts and Contexts: A
+Contextualist Approach to the Ugaritic Texts and Their Cultic Vocabulary*,
+argues that Ugaritic texts should be read as objects recovered from particular
+buildings, rooms, and excavation points, rather than as a collection of isolated
+works. A tablet's findspot is itself evidence, and may be part of what the text
+means.
 
-## The Approach
+## The approach
 
-Burns begins by criticizing three habits in Ugaritic scholarship: privileging
-texts over archaeological evidence, concentrating on sources already classified
-as "religious" or "literary," and reducing diverse evidence to a single coherent
-picture of Ugaritic religion. The first habit is especially problematic. A
-traditional reading may transliterate, translate, and compare a tablet with
-similar texts while almost completely detaching it from the place where it was
-found.
+Burns criticizes three habits in Ugaritic scholarship: privileging texts over
+archaeological evidence, concentrating on sources already classified as
+"religious" or "literary," and reducing diverse evidence to a single coherent
+picture of Ugaritic religion. The first is the most consequential of the three.
+A traditional reading may transliterate a tablet, translate it, and compare it
+with similar texts while barely registering where it was found.
 
-The contextualist approach restores this material dimension. Its starting
-hypothesis is that the placement of tablets in an ancient archive was at least
-partly deliberate: the physical grouping of texts may express an intellectual
-classification by content or function. The proximity of tablets, their presence
-in the same room, and differences between archives may therefore help us
-understand individual words and documents, as well as the people and institutions
+The contextualist approach puts that material dimension back. Its starting
+hypothesis is that the placement of tablets in an archive was at least partly
+deliberate, so that the physical grouping of texts may express a classification
+by content or function. Proximity between tablets, their presence in the same
+room, and differences between archives can then bear on how we read individual
+words and documents, and on what we can say about the people and institutions
 that used them.
 
 The method proceeds in five stages:
@@ -44,48 +43,49 @@ The method proceeds in five stages:
    levels. Shared vocabulary can reveal connections between archives, while
    exclusive vocabulary may indicate specialization.
 
-This is not an attempt to replace philology with an excavation map. Translation
-and the analysis of formulas, genre, and textual structure remain essential.
-Archaeological records are not treated as infallible either: they are incomplete,
-sometimes contradictory, and the tablets' original arrangement may have been
-disturbed. The method brings together two imperfect bodies of evidence and
-requires uncertainty to be recorded explicitly.
+None of this replaces philology with an excavation map. Translation and the
+analysis of formulas, genre, and textual structure remain essential. The
+archaeological record gets no more deference: it is incomplete, sometimes
+contradictory, and the tablets' original arrangement may have been disturbed.
+The method combines two imperfect bodies of evidence and asks the researcher to
+record uncertainty explicitly.
 
-## Why the Annotation Matters
+## Why the annotation matters
 
-The database is valuable for more than its inventory of cultic words. Its
-fundamental unit is the relationship "lexeme - place in a text - findspot."
-Without that relationship, it is impossible to test the dissertation's central
-question: whether the distribution of terms forms meaningful spatial patterns.
+The database is worth more than its inventory of cultic words. Its basic unit is
+the relationship "lexeme - place in a text - findspot," and without that
+relationship there is no way to test the dissertation's central question:
+whether the distribution of terms forms meaningful spatial patterns.
 
-The annotation matters because it:
+Recording it that way has consequences:
 
-- preserves the path from interpretation back to evidence by recording the KTU
-  number, line, and excavation data for every item;
-- retains ambiguity by distinguishing homographs, probable cultic usage, usage
-  without a securely identified cultic function, and disputed locations;
-- permits GP and PH to be compared across the complete body of shared and
-  exclusive vocabulary rather than through a few prominent texts;
-- includes administrative lists and other documents that genre-based selection
-  can easily marginalize as "non-religious";
-- turns conclusions into reproducible queries: attestations can be recounted,
-  classification rules revised, or new findspot evidence introduced to see
-  whether the pattern persists.
+- Every item carries its KTU number, line, and excavation data, so an
+  interpretation can always be walked back to the evidence under it.
+- Ambiguity survives the encoding. The scheme separates homographs, probable
+  cultic usage, usage with no securely identified cultic function, and disputed
+  locations.
+- GP and PH can be compared across the whole of their shared and exclusive
+  vocabulary, not through a few prominent texts.
+- Administrative lists and similar documents stay in the corpus, where selection
+  by genre would have set them aside as "non-religious."
+- Conclusions become queries that can be re-run: recount the attestations,
+  revise a classification rule, or add new findspot evidence and see whether the
+  pattern holds.
 
-This structure keeps together three dimensions that are normally dispersed
-across different publications: word, document, and archaeological context.
+It also keeps word, document, and archaeological context in one place, where
+publication normally splits them apart.
 
-## Why These Scripts Exist
+## Why these scripts exist
 
-The dissertation's appendix survives as 45 PDF tables organized into nine
-thematic workbooks with five worksheets each. This is readable by a person, but
-awkward for reproducible analysis: the tables are difficult to combine, search,
-filter, and validate automatically. The legacy transliteration font creates an
-additional problem because text extracted from the PDFs contains characters that
-do not correspond to the intended Unicode symbols.
+The dissertation's appendix survives as 45 PDF tables, organized into nine
+thematic workbooks of five worksheets each. A person can read them. Software can
+do little with them: the tables resist combining, searching, filtering, and
+automatic validation. The legacy transliteration font adds a second problem,
+since text extracted from the PDFs comes out as characters that do not match the
+intended Unicode symbols.
 
 The [`scripts/parse_workbooks_to_csv.py`](scripts/parse_workbooks_to_csv.py)
-script turns this printed representation back into structured rows. It:
+script turns the printed tables back into structured rows. It:
 
 - reconstructs the nine original columns and adds the source page, section, and
   root group;
@@ -100,20 +100,20 @@ script turns this printed representation back into structured rows. It:
 - preserves the KTU number, line references, locus, room, point, depth,
   disputed-location flag, and comments.
 
-The script therefore does not "prove" Burns's hypothesis or replace philological
-classification. It makes the empirical basis of the method machine-readable and
-the workflow reproducible. A researcher can generate the same tables from
-lawfully obtained source PDFs, inspect the transformation, and then construct
+The script proves nothing about Burns's hypothesis and does not replace
+philological classification. It makes the method's empirical basis machine
+readable and the workflow repeatable. Given lawfully obtained source PDFs, a
+researcher can regenerate the same tables, inspect the transformation, and build
 their own searches, summaries, maps, and network models.
 
 The generated CSV files are a derivative representation of material licensed
-under CC BY-NC-ND 2.5. They are therefore not published in this repository and
-remain local-only. The public repository contains the transformation code, schema
-documentation, and rules that allow researchers to process source files they have
-obtained themselves.
+under CC BY-NC-ND 2.5, so this repository does not publish them; they stay
+local. What it does publish is the transformation code, the schema
+documentation, and the rules needed to process source files a researcher has
+obtained independently.
 
 ## Source
 
 Duncan Coe Burns, *Contents, Texts and Contexts: A Contextualist Approach to the
 Ugaritic Texts and Their Cultic Vocabulary*, PhD dissertation, University of
-Sheffield. See especially Chapters 2-5 and the conclusion.
+Sheffield, 2003. See especially Chapters 2-5 and the conclusion.
