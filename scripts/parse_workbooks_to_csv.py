@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["pdfplumber>=0.11"]
+# dependencies = [
+#   "pdfplumber>=0.11",
+#   # pdfplumber -> pdfminer.six -> cryptography. cryptography stopped shipping
+#   # x86_64 macOS wheels after 46.0.3, and building it from source needs a Rust
+#   # toolchain, so an Intel Mac cannot resolve this environment from a cold
+#   # cache without the bound. Other platforms keep wheels throughout and are
+#   # left unconstrained.
+#   "cryptography<46.0.4; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+# ]
 # ///
 """Parse the Ugaritic cultic *Workbooks* PDFs into per-worksheet CSV files.
 
@@ -48,6 +56,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pdfplumber
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sources import PROJECT_ROOT, WORKBOOKS, SourceError, ensure  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Geometry
@@ -469,18 +480,30 @@ def write_csv(rows: list[dict[str, str]], out_path: Path) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    root = Path(__file__).resolve().parent.parent
-    p.add_argument("--input", type=Path, default=root / "Workbooks",
-                   help="Directory of workbook subfolders (default: ./Workbooks)")
-    p.add_argument("--output", type=Path, default=root / "output",
+    p.add_argument("--input", type=Path, default=None,
+                   help="Directory of workbook subfolders "
+                        "(default: ./Workbooks, downloaded if absent)")
+    p.add_argument("--output", type=Path, default=PROJECT_ROOT / "output",
                    help="Directory to write CSVs into (default: ./output)")
+    p.add_argument("--no-download", action="store_true",
+                   help="fail instead of fetching the missing source Workbooks")
     return p
 
 
 def main() -> int:
     args = build_arg_parser().parse_args()
-    input_dir: Path = args.input.resolve()
     output_dir: Path = args.output.resolve()
+
+    try:
+        if args.input is None:
+            input_dir = ensure(WORKBOOKS, download=not args.no_download)
+        else:
+            input_dir = args.input.resolve()
+            if not input_dir.exists():
+                raise SourceError(f"{input_dir} does not exist")
+    except SourceError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
 
     pdfs = sorted(input_dir.glob("*/*.pdf"))
     if not pdfs:
