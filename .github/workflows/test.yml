@@ -38,3 +38,36 @@ jobs:
           assert callable(parser.parse_pdf)
           assert 'ugarit-context-parsing' not in str(pathlib.Path(parser.__file__).resolve())
           PY
+
+  agora-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out materializer repository
+        uses: actions/checkout@v4
+      - name: Check out pinned Agora contract
+        uses: actions/checkout@v4
+        with:
+          repository: alexsosn/Agora
+          ref: 122b27d9326a57f464a7ce6f610385e6d6182999
+          path: .agora-contract
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Agora manifest validator dependency
+        run: python -m pip install 'jsonschema>=4,<5'
+      - name: Validate manifest with Agora runtime semantics
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path('.agora-contract').resolve()))
+          from scripts.agora_materialize import load_manifest
+
+          manifest = load_manifest(Path('agora.materializer.json'))
+          assert manifest['plugin']['id'] == 'ugarit-context-parsing'
+          assert [item['id'] for item in manifest['materializers']] == [
+              'burns-workbooks-csv-text-fabric',
+              'burns-workbooks-pdf-text-fabric',
+          ]
+          PY
