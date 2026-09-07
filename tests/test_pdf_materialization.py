@@ -6,8 +6,9 @@ from pathlib import Path
 from unittest import mock
 
 from ugarit_context_parsing.cli import main
+from ugarit_context_parsing.graph import build_tf_data
 from ugarit_context_parsing.pdf_source import load_pdf_directory, parse_workbook_pdf
-from ugarit_context_parsing.source import WorkbookRecord, WorkbookSource
+from ugarit_context_parsing.source import SourceValidationError, WorkbookRecord, WorkbookSource
 
 
 class PdfSourceTests(unittest.TestCase):
@@ -43,6 +44,7 @@ class PdfSourceTests(unittest.TestCase):
                 path.write_bytes(b"synthetic pdf bytes")
 
             source = load_pdf_directory(root, parser=fake_parser)
+            data = build_tf_data(source)
 
         self.assertEqual(calls, ["A.pdf", "B.pdf"])
         self.assertEqual(source.files, ("A/A.pdf", "Z/B.pdf"))
@@ -50,6 +52,26 @@ class PdfSourceTests(unittest.TestCase):
         self.assertEqual([record.source_row for record in source.records], [1, 1])
         self.assertEqual([record.headword for record in source.records], ["A", "B"])
         self.assertRegex(source.tree_sha256, r"^[0-9a-f]{64}$")
+        worksheet_nodes = tuple(data.node_features["worksheet"].values())
+        self.assertEqual(worksheet_nodes, ("A/A", "Z/B"))
+
+    def test_rejects_symlinked_pdf_instead_of_silently_ignoring_it(self):
+        def fake_parser(path: Path):
+            return [self._row(path.stem, "1.14")]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "A" / "A.pdf"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"synthetic pdf bytes")
+            link = root / "B" / "Linked.pdf"
+            link.parent.mkdir(parents=True)
+            try:
+                link.symlink_to(target)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with self.assertRaisesRegex(SourceValidationError, "symlink"):
+                load_pdf_directory(root, parser=fake_parser)
 
     def test_public_pdf_parser_adapter_points_at_the_existing_workbook_parser(self):
         self.assertTrue(callable(parse_workbook_pdf))
