@@ -16,3 +16,6 @@ dependencies = [
 
 [project.scripts]
 ugarit-context-parsing = "ugarit_context_parsing.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ugarit_context_parsing", "scripts"]
