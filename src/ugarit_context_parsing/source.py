@@ -90,6 +90,10 @@ def load_csv_directory(root: str | Path) -> WorkbookSource:
                 )
             for source_row, row in enumerate(reader, start=1):
                 assert row is not None
+                if None in row or any(row.get(field) is None for field in WORKBOOK_FIELDS):
+                    raise SourceValidationError(
+                        f"{rel}: row {source_row}: column count does not match Workbook header"
+                    )
                 if all((row.get(field) or "") == "" for field in WORKBOOK_FIELDS):
                     continue
                 raw_page = (row.get("source_page") or "").strip()
