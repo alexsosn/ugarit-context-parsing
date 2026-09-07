@@ -74,11 +74,35 @@ class CsvSourceTests(unittest.TestCase):
         self.assertEqual(source.records[0].comments, "synthetic test row")
         self.assertEqual(source.records[1].source_page, 2)
 
-    def test_rejects_non_workbook_csv_header(self):
+    def test_ignores_root_level_appendix_csv_when_workbooks_are_present(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._write_csv(root / "appendix.csv", [{"ktu": "1.1"}], fields=["ktu"])
+            self._write_csv(root / "Divine Names" / "Names.csv", [self._row()])
+            source = load_csv_directory(root)
+
+        self.assertEqual(source.files, ("Divine Names/Names.csv",))
+        self.assertEqual(len(source.records), 1)
+
+    def test_rejects_non_workbook_csv_header_inside_workbook_tree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_csv(root / "Workbook" / "invalid.csv", [{"ktu": "1.1"}], fields=["ktu"])
             with self.assertRaisesRegex(SourceValidationError, "Workbook CSV header"):
+                load_csv_directory(root)
+
+    def test_rejects_symlinked_csv_instead_of_silently_ignoring_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "A" / "Worksheet.csv"
+            self._write_csv(target, [self._row()])
+            link = root / "B" / "Linked.csv"
+            link.parent.mkdir(parents=True)
+            try:
+                link.symlink_to(target)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+            with self.assertRaisesRegex(SourceValidationError, "symlink"):
                 load_csv_directory(root)
 
     def test_rejects_invalid_source_page(self):
@@ -218,7 +242,7 @@ class ManifestContractTests(unittest.TestCase):
             self.assertEqual(set(item["output"]["required_paths"]), {
                 "otype.tf", "oslots.tf", "otext.tf", "conversion-report.json"
             })
-        self.assertEqual(items["burns-workbooks-csv-text-fabric"]["input"]["required_globs"], ["**/*.csv"])
+        self.assertEqual(items["burns-workbooks-csv-text-fabric"]["input"]["required_globs"], ["*/*.csv"])
         self.assertEqual(items["burns-workbooks-pdf-text-fabric"]["input"]["required_globs"], ["*/*.pdf"])
 
 
