@@ -8,6 +8,7 @@ from .source import (
     SourceValidationError,
     WorkbookRecord,
     WorkbookSource,
+    _reject_symlinks,
     _tree_hash,
 )
 
@@ -27,12 +28,9 @@ def load_pdf_directory(
     source_root = Path(root).resolve()
     if not source_root.is_dir():
         raise SourceValidationError(f"source directory does not exist: {root}")
+    _reject_symlinks(source_root)
     paths = sorted(
-        (
-            path
-            for path in source_root.glob("*/*.pdf")
-            if path.is_file() and not path.is_symlink()
-        ),
+        (path for path in source_root.glob("*/*.pdf") if path.is_file()),
         key=lambda path: path.relative_to(source_root).as_posix(),
     )
     if not paths:
