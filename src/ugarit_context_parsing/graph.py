@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 
 from .identifiers import normalize_cuc_tablet
 from .source import WorkbookSource
@@ -161,7 +162,8 @@ def build_tf_data(source: WorkbookSource) -> TFData:
         nonlocal worksheet_slots
         flush_section()
         if worksheet_slots and current_file is not None:
-            worksheet_specs.append((current_file.removesuffix(".csv"), worksheet_slots))
+            worksheet_label = PurePosixPath(current_file).with_suffix("").as_posix()
+            worksheet_specs.append((worksheet_label, worksheet_slots))
             worksheet_slots = []
 
     for slot, record in enumerate(records, start=1):
