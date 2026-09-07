@@ -91,6 +91,28 @@ class CsvSourceTests(unittest.TestCase):
             with self.assertRaisesRegex(SourceValidationError, "Workbook CSV header"):
                 load_csv_directory(root)
 
+    def test_rejects_extra_csv_cells_instead_of_dropping_them(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "Workbook" / "Worksheet.csv"
+            self._write_csv(path, [self._row()])
+            lines = path.read_text(encoding="utf-8").splitlines()
+            lines[1] = lines[1] + ",unexpected-extra-cell"
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(SourceValidationError, "column count"):
+                load_csv_directory(root)
+
+    def test_rejects_missing_csv_cells_instead_of_coercing_them_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "Workbook" / "Worksheet.csv"
+            self._write_csv(path, [self._row()])
+            lines = path.read_text(encoding="utf-8").splitlines()
+            lines[1] = lines[1].rsplit(",", 1)[0]
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(SourceValidationError, "column count"):
+                load_csv_directory(root)
+
     def test_rejects_symlinked_csv_instead_of_silently_ignoring_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
