@@ -20,7 +20,7 @@
       "input": {
         "type": "directory",
         "required_globs": [
-          "**/*.csv"
+          "*/*.csv"
         ],
         "allow_symlinks": false
       },
