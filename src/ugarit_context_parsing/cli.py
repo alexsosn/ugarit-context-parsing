@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from .graph import build_tf_data
+from .pdf_source import load_pdf_directory
 from .report import build_conversion_report
 from .source import SourceValidationError, load_csv_directory
 from .writer import write_artifact
@@ -23,18 +24,24 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    if args.input_format != "csv":
-        raise SystemExit("PDF materialization is not implemented yet")
     try:
-        source = load_csv_directory(args.source)
+        source = (
+            load_csv_directory(args.source)
+            if args.input_format == "csv"
+            else load_pdf_directory(args.source)
+        )
     except SourceValidationError as exc:
         raise SystemExit(f"source validation failed: {exc}") from exc
     data = build_tf_data(source)
-    report = build_conversion_report(source, data, source_format="csv")
+    report = build_conversion_report(
+        source,
+        data,
+        source_format=args.input_format,
+    )
     if not write_artifact(data, report, args.output):
         raise SystemExit("Text-Fabric refused the generated dataset")
     print(
-        f"converted {len(source.files)} Workbook CSV files / "
+        f"converted {len(source.files)} Workbook {args.input_format.upper()} files / "
         f"{len(source.records)} records to {args.output}"
     )
     return 0
