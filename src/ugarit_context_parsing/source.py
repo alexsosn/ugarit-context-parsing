@@ -53,6 +53,16 @@ def _tree_hash(root: Path, paths: list[Path]) -> str:
     return digest.hexdigest()
 
 
+def _resolve_source_root(root: str | Path) -> Path:
+    supplied = Path(root)
+    if supplied.is_symlink():
+        raise SourceValidationError(f"source root is a disallowed symlink: {root}")
+    source_root = supplied.resolve()
+    if not source_root.is_dir():
+        raise SourceValidationError(f"source directory does not exist: {root}")
+    return source_root
+
+
 def _reject_symlinks(root: Path) -> None:
     for path in root.rglob("*"):
         if path.is_symlink():
@@ -62,9 +72,7 @@ def _reject_symlinks(root: Path) -> None:
 
 
 def load_csv_directory(root: str | Path) -> WorkbookSource:
-    source_root = Path(root).resolve()
-    if not source_root.is_dir():
-        raise SourceValidationError(f"source directory does not exist: {root}")
+    source_root = _resolve_source_root(root)
     _reject_symlinks(source_root)
     # The Workbooks parser mirrors the source's one-level category/worksheet
     # layout. Root-level CSVs belong to other products (notably appendix.csv)
