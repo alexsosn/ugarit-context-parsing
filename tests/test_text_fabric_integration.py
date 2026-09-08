@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import copy
 import csv
 import hashlib
+import importlib.metadata
 import json
+import platform
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,6 +76,48 @@ def _write_determinism_fixture(source: Path, *, later_first: bool) -> None:
             "disputed": "y",
             "comments": "synthetic second entry",
         },
+        {
+            "source_page": 5,
+            "section": "Section α",
+            "root": "bʿl",
+            "headword": "bʿl",
+            "ktu": "Not attested",
+            "references": "I 3",
+            "locus": "GP",
+            "room": "1",
+            "point": "",
+            "depth": "",
+            "disputed": "n",
+            "comments": "synthetic repeated entry label",
+        },
+        {
+            "source_page": 6,
+            "section": "Section β",
+            "root": "ʿnt",
+            "headword": "ʿnt",
+            "ktu": "1.17",
+            "references": "II 1",
+            "locus": "GP",
+            "room": "2",
+            "point": "",
+            "depth": "",
+            "disputed": "n",
+            "comments": "synthetic intervening section",
+        },
+        {
+            "source_page": 7,
+            "section": "Section α",
+            "root": "bʿl",
+            "headword": "bʿl",
+            "ktu": "1.18",
+            "references": "III 1",
+            "locus": "GP",
+            "room": "3",
+            "point": "",
+            "depth": "",
+            "disputed": "n",
+            "comments": "synthetic repeated section label",
+        },
     ]
     zeta_rows = [
         {
@@ -97,6 +143,33 @@ def _write_determinism_fixture(source: Path, *, later_first: bool) -> None:
         files.reverse()
     for path, rows in files:
         _write_csv(path, rows)
+
+
+def _environment_evidence() -> dict:
+    distributions = sorted(
+        (
+            str(dist.metadata.get("Name") or dist.name).casefold().replace("_", "-"),
+            str(dist.version),
+        )
+        for dist in importlib.metadata.distributions()
+    )
+    return {
+        "python": {
+            "implementation": platform.python_implementation(),
+            "version": platform.python_version(),
+        },
+        "platform": {
+            "sys_platform": sys.platform,
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+        },
+        "distributions": distributions,
+    }
+
+
+def _semantic_snapshot(_root: Path) -> dict:
+    raise NotImplementedError("semantic snapshot not implemented")
 
 
 class RealTextFabricIntegrationTests(unittest.TestCase):
@@ -223,7 +296,7 @@ class RealTextFabricIntegrationTests(unittest.TestCase):
             )
             self.assertEqual(report_a, report_b)
             self.assertEqual(report_a["status"], "ok")
-            self.assertEqual(report_a["counts"]["records"], 3)
+            self.assertEqual(report_a["counts"]["records"], 6)
 
             api_a = Fabric(locations=[str(output_a)], modules=[""], silent="deep").loadAll(
                 silent="deep"
@@ -261,10 +334,44 @@ class RealTextFabricIntegrationTests(unittest.TestCase):
                 [api_a.T.sectionFromNode(node)[0] for node in api_a.F.otype.s("worksheet")],
                 ["Alpha/First", "Zeta/Second"],
             )
-            self.assertEqual(len(api_a.F.otype.s("record")), 3)
+            self.assertEqual(len(api_a.F.otype.s("record")), 6)
             self.assertEqual(len(api_a.F.otype.s("worksheet")), 2)
-            self.assertEqual(len(api_a.F.otype.s("section")), 2)
-            self.assertEqual(len(api_a.F.otype.s("entry")), 3)
+            self.assertEqual(len(api_a.F.otype.s("section")), 4)
+            self.assertEqual(len(api_a.F.otype.s("entry")), 6)
+            self.assertIn(
+                "Section α~2",
+                [api_a.F.section.v(node) for node in api_a.F.otype.s("section")],
+            )
+            self.assertIn(
+                "bʿl~2",
+                [api_a.F.entry.v(node) for node in api_a.F.otype.s("entry")],
+            )
+
+            print(
+                "DETERMINISM_ENVIRONMENT="
+                + json.dumps(
+                    _environment_evidence(),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+
+            semantic_a = _semantic_snapshot(output_a)
+            semantic_b = _semantic_snapshot(output_b)
+            self.assertEqual(semantic_a, semantic_b)
+
+            node_mutation = copy.deepcopy(semantic_a)
+            node_mutation["node_features"]["headword"]["items"][0][1] += "-mutated"
+            self.assertNotEqual(semantic_a, node_mutation)
+
+            edge_mutation = copy.deepcopy(semantic_a)
+            edge_mutation["edge_features"]["oslots"]["items"][0][1].append(999999)
+            self.assertNotEqual(semantic_a, edge_mutation)
+
+            report_mutation = copy.deepcopy(semantic_a)
+            report_mutation["report"]["status"] = "mutated"
+            self.assertNotEqual(semantic_a, report_mutation)
 
 
 if __name__ == "__main__":
