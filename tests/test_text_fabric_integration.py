@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,19 +28,6 @@ def _source_snapshot(root: Path) -> dict[str, str]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
-
-
-def _normalized_tf_files(root: Path) -> tuple[dict[str, str], dict[str, int]]:
-    normalized: dict[str, str] = {}
-    generated_dates: dict[str, int] = {}
-    for path in sorted(root.glob("*.tf")):
-        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-        date_lines = [line for line in lines if line.startswith("@dateWritten=")]
-        generated_dates[path.name] = len(date_lines)
-        normalized[path.name] = "".join(
-            line for line in lines if not line.startswith("@dateWritten=")
-        )
-    return normalized, generated_dates
 
 
 def _write_determinism_fixture(source: Path, *, later_first: bool) -> None:
@@ -207,56 +195,43 @@ class RealTextFabricIntegrationTests(unittest.TestCase):
             self.assertEqual(_source_snapshot(source_b), source_before_b)
             self.assertEqual(_source_snapshot(source_a), _source_snapshot(source_b))
 
-            tf_a, dates_a = _normalized_tf_files(output_a)
-            tf_b, dates_b = _normalized_tf_files(output_b)
-            self.assertEqual(set(tf_a), set(tf_b))
-            self.assertTrue(tf_a, "real Text-Fabric writer must produce .tf files")
-            self.assertEqual(tf_a, tf_b)
-            self.assertTrue(all(count == 1 for count in dates_a.values()), dates_a)
-            self.assertTrue(all(count == 1 for count in dates_b.values()), dates_b)
+            # Freeze a third artifact before any comparator load. This avoids a
+            # loaded-path cache masking the negative control after mutation.
+            output_bad = root / "tf-b-perturbed"
+            shutil.copytree(output_b, output_bad)
+            cuc_path = output_bad / "cuc_tablet.tf"
+            cuc_text = cuc_path.read_text(encoding="utf-8")
+            self.assertEqual(cuc_text.count("KTU 1.14"), 1)
+            cuc_path.write_text(
+                cuc_text.replace("KTU 1.14", "KTU 9.99", 1),
+                encoding="utf-8",
+            )
+
+            # TDD RED: this private comparator is intentionally absent in this
+            # commit. CI must fail here before the helper implementation lands.
+            from ugarit_context_parsing._semantic_compare import (
+                compare_text_fabric_artifacts,
+            )
+
+            self.assertEqual(compare_text_fabric_artifacts(output_a, output_b), ())
+            differences = compare_text_fabric_artifacts(output_a, output_bad)
+            self.assertIn(
+                "normalized Text-Fabric file differs: cuc_tablet.tf",
+                differences,
+            )
+            self.assertIn("node feature differs: cuc_tablet", differences)
 
             report_a = json.loads(
                 (output_a / "conversion-report.json").read_text(encoding="utf-8")
             )
-            report_b = json.loads(
-                (output_b / "conversion-report.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(report_a, report_b)
             self.assertEqual(report_a["status"], "ok")
             self.assertEqual(report_a["counts"]["records"], 3)
 
             api_a = Fabric(locations=[str(output_a)], modules=[""], silent="deep").loadAll(
                 silent="deep"
             )
-            api_b = Fabric(locations=[str(output_b)], modules=[""], silent="deep").loadAll(
-                silent="deep"
-            )
             self.assertIsNotNone(api_a)
-            self.assertIsNotNone(api_b)
-            assert api_a is not None and api_b is not None
-
-            self.assertEqual(tuple(api_a.Fall()), tuple(api_b.Fall()))
-            self.assertEqual(tuple(api_a.Eall()), tuple(api_b.Eall()))
-            self.assertEqual(api_a.F.otype.maxSlot, api_b.F.otype.maxSlot)
-            self.assertEqual(api_a.F.otype.maxNode, api_b.F.otype.maxNode)
-            max_node = api_a.F.otype.maxNode
-
-            self.assertEqual(
-                tuple(api_a.F.otype.v(node) for node in range(1, max_node + 1)),
-                tuple(api_b.F.otype.v(node) for node in range(1, max_node + 1)),
-            )
-            for feature in api_a.Fall():
-                with self.subTest(feature=feature):
-                    self.assertEqual(
-                        tuple(api_a.Fs(feature).v(node) for node in range(1, max_node + 1)),
-                        tuple(api_b.Fs(feature).v(node) for node in range(1, max_node + 1)),
-                    )
-
-            non_slots = range(api_a.F.otype.maxSlot + 1, max_node + 1)
-            self.assertEqual(
-                tuple(api_a.T.sectionFromNode(node) for node in non_slots),
-                tuple(api_b.T.sectionFromNode(node) for node in non_slots),
-            )
+            assert api_a is not None
             self.assertEqual(
                 [api_a.T.sectionFromNode(node)[0] for node in api_a.F.otype.s("worksheet")],
                 ["Alpha/First", "Zeta/Second"],
