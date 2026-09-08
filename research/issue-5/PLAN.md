@@ -1,132 +1,140 @@
-# Plan: repeated-run semantic determinism evidence (#5)
+# Plan: harden Burns CSV determinism evidence (#5)
 
 ## Goal
 
-Provide reproducible, synthetic-data evidence that the real `burns-workbooks-csv-text-fabric` materializer produces semantically equivalent Text-Fabric output when the same source is converted twice under the same resolved runtime environment.
+Close the remaining evidence gaps in the already-merged Burns CSV repeated-run test so Agora can independently review/replay a complete semantic determinism contract for one exact verified runtime environment.
 
-This ticket proves upstream converter behavior. It does not authorize Agora cache reuse by itself; Agora must separately replay the evidence in the exact integrity-verified managed installation and bind any reusable policy to that `execution_identity_sha256`.
+The merged #4 replay remains the foundation. #5 must strengthen it without weakening its exhaustive normalized `.tf` comparison or changing converter production behavior unless a real semantic delta is exposed.
 
 ## Preconditions
 
 - Research: `research/issue-5/RESEARCH.md`.
-- Baseline converter: `e1218b88d9d849c58ee25541339f32b0d8f5a7d3`.
-- No Burns-derived source or generated artifact may be committed/uploaded.
-- CSV and PDF determinism are separate claims. This slice covers CSV only.
+- Current baseline: `master@f271e5697a2dc5c13c783338e2a603ab5434678b`.
+- Existing repeated-run test in `tests/test_text_fabric_integration.py` is preserved.
+- No Burns-derived source/generated artifact may be committed or uploaded.
+- CSV and PDF determinism remain separate claims; this slice is CSV only.
 
-## Semantic comparison contract
+## Existing evidence that must remain green
 
-The test harness will load each emitted TF artifact through real `tf.fabric.Fabric` and normalize the complete observable converter payload into a deterministic Python structure.
+The current test already requires:
 
-The snapshot must bind:
+- two real CLI conversions into distinct fresh output roots;
+- identical synthetic source bytes across distinct source roots and opposite creation order;
+- exact equality of every generated `.tf` file after removing only `@dateWritten=`;
+- exact conversion-report equality;
+- independent `Fabric(...).loadAll()` of both outputs;
+- dynamic equality of `Fall()` and `Eall()` inventories;
+- complete node-feature equality across the full node range;
+- node type and section/navigation equality.
 
-1. complete node-feature inventory from `Fall()` and every `Fs(feature).items()` mapping, including `otype` and all provenance/domain features;
-2. complete edge-feature inventory from `Eall()` and every `Es(feature).items()` mapping, canonicalizing set-like targets and valued-edge mappings without discarding values;
-3. content-bearing feature metadata exposed by the loaded TF API, including dataset/config/feature metadata produced by this converter;
-4. complete `conversion-report.json` value, because no current converter-owned report field is volatile;
-5. section/navigation consequences through the graph/`otext` contract, covered by the complete warp/features plus explicit section-navigation assertions on the richer fixture.
+Do not replace these with a weaker helper-only assertion.
 
-The comparator must not use output directory paths, mtimes, permissions, CLI timing/stdout, or temporary names.
+## Missing semantic-snapshot contract
 
-## Synthetic fixture
+Add a test-only `_semantic_snapshot(output)` seam over the already-loaded real Text-Fabric output. Its normalized result must include:
 
-Construct the source entirely in the test using `WORKBOOK_FIELDS`.
+1. all node features named by `Fall()` and every `(node, value)` mapping;
+2. all edge features named by `Eall()` and every `(source, targets/values)` mapping from `Es(feature).items()`;
+3. feature metadata for every node/edge feature, excluding only Text-Fabric-generated `dateWritten`;
+4. `maxSlot`, `maxNode`, and complete structural section/navigation tuples;
+5. the complete parsed `conversion-report.json` object.
 
-Use at least two worksheet CSV paths and multiple sections/entries so the fixture exercises:
+Canonicalization rules:
 
-- deterministic normalized file ordering;
-- worksheet/section/entry node ordering;
-- duplicate section labels and repeated headword/root occurrences that generate `~N` labels;
-- Unicode values;
-- multiple KTU identifiers plus at least one non-canonical/non-attested value;
-- relative `source_file`, `source_row`, and `source_page` provenance;
-- CUC identifier normalization;
-- conversion report counts/checks.
+- preserve integer node/target identity;
+- sort set/frozenset edge targets deterministically;
+- preserve valued-edge target→value mappings;
+- recursively canonicalize dict/list/tuple/set containers without converting distinct scalar values into one representation;
+- never ignore an unknown feature merely because the test did not anticipate its name.
 
-## RED 1 — repeated-run semantic contract
+## Fixture hardening
 
-Commit tests before implementing the semantic snapshot helper.
+Extend the existing synthetic determinism fixture only enough to force duplicate hierarchy occurrence labels. Within one worksheet, create a non-contiguous repeated section and/or repeated entry label so `_occurrence_label()` must emit `~2`.
 
-The RED commit must:
+Assert the expected suffixed section/entry label after real reload. Keep source creation-order inversion and all existing Unicode/KTU/source-provenance coverage.
 
-1. create one synthetic source tree;
-2. run the real CLI twice into two distinct fresh output directories;
-3. require a semantic snapshot for each output and equality between them;
-4. require an explicit negative control that changes one semantic value in an in-memory snapshot and proves inequality;
-5. require section navigation/labels from both outputs to agree;
-6. emit environment evidence to the test log;
-7. contain a deliberate unimplemented test-harness snapshot seam so the committed test fails for the intended missing-contract reason, not because converter execution or fixture construction is broken.
+## RED — missing semantic evidence seam
 
-Expected RED: the semantic snapshot seam raises `NotImplementedError` after both real conversions complete.
+Commit tests before implementing `_semantic_snapshot`.
 
-No converter production code changes in RED.
+The RED commit must modify test code only and must:
 
-## GREEN 1 — semantic replay helper
+1. preserve and execute all existing repeated-run assertions first;
+2. emit a canonical `DETERMINISM_ENVIRONMENT=<json>` line from the current test process;
+3. call `_semantic_snapshot(output_a)` and `_semantic_snapshot(output_b)` after both real conversions/reloads have succeeded;
+4. compare snapshots for equality;
+5. contain a deliberate `_semantic_snapshot` implementation that raises `NotImplementedError("semantic snapshot not implemented")` so the exact commit is observably RED for the intended missing test-harness contract;
+6. include the planned negative-control assertions in the test body, even though execution stops at the deliberate seam in RED.
 
-Implement only the test-harness semantic snapshot/normalization seam.
+Expected RED: all prior materialization/reload checks succeed, then the test errors specifically at the unimplemented semantic snapshot seam. No converter source file changes.
 
-Requirements:
+## GREEN 1 — implement semantic snapshot in tests only
 
-- enumerate feature names dynamically (`Fall()` / `Eall()`), not a hard-coded allowlist;
-- canonicalize node mappings by integer node id and edge targets deterministically;
-- retain edge values when present;
-- retain feature metadata needed to distinguish semantically different feature definitions;
-- include the full conversion report;
-- fail loudly if the TF artifact cannot be loaded;
-- do not ignore arbitrary hidden/unknown converter output.
+Replace the deliberate `NotImplementedError` with the minimal test-only normalizer.
 
-If the two real runs compare equal, make no converter production change.
+Do not change converter production code if the real outputs are semantically equal.
 
-If they differ, stop GREEN and investigate the first semantic delta. Any converter normalization fix requires a focused new RED regression before production change.
+If the snapshots differ:
 
-## RED 2 / GREEN 2 — comparator negative controls
+1. preserve the failing exact head;
+2. inspect the first semantic difference;
+3. determine whether it is legitimate generated volatility already excluded by the one-field `dateWritten` rule;
+4. if not, add a focused converter regression RED before any production fix;
+5. do not broaden metadata/feature ignores merely to force GREEN.
 
-The first test already requires a simple negative control. Add focused tests if needed to prove the normalizer detects at least:
+## GREEN 2 — negative controls
 
-- one changed node-feature value;
-- one changed edge target/value;
-- one changed conversion-report field.
+Prove the snapshot/equality path is non-vacuous by deep-copying a real normalized snapshot and independently changing:
 
-These may mutate copied normalized snapshots rather than generated files; they exist to prove the equality comparator is not vacuous.
+- one node-feature value;
+- one edge target/value from `oslots` or another emitted edge feature;
+- one `conversion-report.json` value.
+
+Each altered copy must compare unequal to the original. These mutations are test-memory only and do not modify converter outputs.
 
 ## Environment evidence
 
-The replay test must print one canonical JSON record prefixed with `DETERMINISM_ENVIRONMENT=` containing at least:
+Add one helper that prints canonical JSON prefixed exactly with `DETERMINISM_ENVIRONMENT=`. Include at least:
 
-- Python implementation/version;
-- OS/platform/machine;
-- sorted resolved installed distributions and versions relevant to the process (recording the full visible distribution set is acceptable and simpler/fail-honest).
+- Python implementation and full version;
+- `sys.platform` / operating system / release / machine;
+- sorted installed distributions as `(normalized-name, version)` pairs.
 
-Do not upload generated TF directories as CI artifacts. GitHub Actions logs are sufficient upstream evidence; Agora will independently validate/replay inside its managed environment before authorization.
+Use installed-distribution metadata from the current process. The log record is upstream evidence only; Agora still binds authorization to its own integrity-verified `execution_identity_sha256` and must replay in that exact managed environment.
+
+Do not upload generated TF directories or source fixtures as Actions artifacts.
 
 ## Test gates
 
-Before final review:
+Final exact head must pass the repository's unchanged ordinary workflow:
 
-- `python -m unittest discover -s tests -v` on Python 3.10, 3.12, and 3.13 via the ordinary workflow;
-- installed-package-outside-checkout gate remains green;
-- Agora manifest-contract job remains green;
-- exact PR head only;
-- no copyrighted source/generated fixture in the diff or workflow artifacts.
+- Python 3.10 full suite;
+- Python 3.12 full suite;
+- Python 3.13 full suite;
+- installed-package-outside-checkout verification;
+- Agora manifest-contract validation.
+
+The determinism test must emit one environment record in each Python matrix cell.
 
 ## Independent adversarial review focus
 
-Review the frozen final patch without relying on this plan and attempt to falsify the determinism claim:
+Freeze the final exact head and review the actual patch without relying on this plan. Challenge at least:
 
-1. Is every emitted node feature compared, or only named examples?
-2. Is every edge target/value compared, including valued edges if introduced later?
-3. Can metadata/report drift escape comparison?
-4. Does the fixture actually exercise file-order and duplicate-label behavior?
-5. Does the negative control prove the comparator sees semantic mutations?
-6. Does the test run the real CLI and real Text-Fabric save/reload twice?
-7. Are output path/timestamp/mtime differences correctly excluded without blanket ignores?
-8. Is environment evidence sufficient to identify the resolved dependency/runtime context?
-9. Is CSV evidence accidentally generalized to PDF?
-10. Is any Burns-derived restricted content committed, logged, or uploaded?
+1. whether every `Fall()` mapping is preserved;
+2. whether every `Eall()` mapping/value is preserved, not just feature names;
+3. whether metadata comparison excludes anything besides generated `dateWritten`;
+4. whether the raw normalized `.tf` backstop is still present;
+5. whether negative controls can actually falsify equality;
+6. whether duplicate occurrence-label state is exercised rather than merely assumed deterministic;
+7. whether both outputs are still produced by the real CLI and independently reloaded;
+8. whether environment evidence reports the resolved process rather than a declared dependency range;
+9. whether any CSV conclusion is improperly generalized to PDF;
+10. whether restricted Burns data or generated artifacts entered the diff/log/artifacts.
 
-Every blocking finding becomes a focused RED regression before its fix.
+Every blocker becomes a focused RED regression before its fix.
 
 ## Definition of done
 
-#5 is complete for the CSV materializer when the exact reviewed PR head passes repeated real synthetic CSV conversion/reload semantic equality on the supported CI Python matrix, the comparator's negative controls pass, environment evidence is present in logs, and a fresh logically independent adversarial review finds no blocking gap.
+#5 is complete for CSV when the frozen PR head preserves the merged #4 replay, adds complete loaded edge/metadata semantic equality plus negative controls and duplicate-label coverage, emits reproducible environment evidence across the supported Python matrix, passes all ordinary CI gates, and receives a fresh logically independent adversarial review with no blocker.
 
-PDF remains un-attested until an equivalent real-parser synthetic-PDF replay is designed and merged separately.
+PDF remains un-attested until a separate real-parser synthetic-PDF evidence loop is completed.
