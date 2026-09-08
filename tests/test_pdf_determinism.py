@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
+import pdfplumber
+from tf.fabric import Fabric
+
+from scripts.parse_workbooks_to_csv import CANONICAL_BOUNDS, file_bounds
 from ugarit_context_parsing._semantic_compare import compare_text_fabric_artifacts
 from ugarit_context_parsing.cli import main
 
@@ -106,6 +111,80 @@ def _write_pdf_determinism_fixture(source: Path, *, later_first: bool) -> None:
         _write_synthetic_pdf(path, text_items, vertical_lines=vertical_lines)
 
 
+def _assert_pdf_geometry_contract(testcase: unittest.TestCase, source: Path) -> None:
+    ruled_path = source / "Alpha" / "Ruled.pdf"
+    with pdfplumber.open(str(ruled_path)) as pdf:
+        vertical_edges = [
+            edge
+            for page in pdf.pages
+            for edge in page.edges
+            if edge["orientation"] == "v"
+        ]
+        testcase.assertEqual(len(vertical_edges), 10)
+        testcase.assertEqual(file_bounds(pdf), tuple(float(x) for x in _CANONICAL_BOUNDS))
+
+    fallback_path = source / "Zeta" / "Fallback.pdf"
+    with pdfplumber.open(str(fallback_path)) as pdf:
+        vertical_edges = [
+            edge
+            for page in pdf.pages
+            for edge in page.edges
+            if edge["orientation"] == "v"
+        ]
+        testcase.assertEqual(vertical_edges, [])
+        testcase.assertEqual(file_bounds(pdf), CANONICAL_BOUNDS)
+
+
+def _assert_synthetic_pdf_contract(testcase: unittest.TestCase, output: Path) -> None:
+    report = json.loads((output / "conversion-report.json").read_text(encoding="utf-8"))
+    testcase.assertEqual(report["status"], "ok")
+    testcase.assertEqual(report["source"]["format"], "pdf")
+    testcase.assertEqual(report["source"]["file_count"], 2)
+    testcase.assertEqual(report["counts"]["records"], 4)
+
+    api = Fabric(locations=[str(output)], modules=[""], silent="deep").load(
+        "headword ktu cuc_tablet references comments source_file source_page",
+        silent="deep",
+    )
+    testcase.assertIsNotNone(api)
+    assert api is not None
+
+    records = tuple(api.F.otype.s("record"))
+    testcase.assertEqual(records, (1, 2, 3, 4))
+    testcase.assertEqual(
+        [api.F.source_file.v(node) for node in records],
+        ["Alpha/Ruled.pdf", "Alpha/Ruled.pdf", "Alpha/Ruled.pdf", "Zeta/Fallback.pdf"],
+    )
+    testcase.assertEqual([api.F.source_page.v(node) for node in records], [1, 1, 1, 1])
+    testcase.assertEqual(
+        [api.F.headword.v(node) for node in records],
+        ["ġzr wrapped", "ġzr wrapped", "ġzr wrapped", "mlk"],
+    )
+    testcase.assertEqual(
+        [api.F.ktu.v(node) for node in records],
+        ["1.14", "1.15", "1.15", "1.16"],
+    )
+    testcase.assertEqual(
+        [api.F.cuc_tablet.v(node) for node in records],
+        ["KTU 1.14", "KTU 1.15", "KTU 1.15", "KTU 1.16"],
+    )
+    testcase.assertEqual(
+        [api.F.references.v(node) for node in records],
+        ["I 1", "II 2 continued", "II 2 continued", "III 3"],
+    )
+    testcase.assertEqual(
+        [api.F.comments.v(node) for node in records],
+        [None, None, "comment", None],
+    )
+
+    worksheets = tuple(api.F.otype.s("worksheet"))
+    testcase.assertEqual(len(worksheets), 2)
+    testcase.assertEqual(
+        [api.T.sectionFromNode(node)[0] for node in worksheets],
+        ["Alpha/Ruled", "Zeta/Fallback"],
+    )
+
+
 class RealPdfDeterminismTests(unittest.TestCase):
     def test_repeated_synthetic_pdf_materialization_is_semantically_identical(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -122,6 +201,8 @@ class RealPdfDeterminismTests(unittest.TestCase):
                 tuple(source_before_a),
                 ("Alpha/Ruled.pdf", "Zeta/Fallback.pdf"),
             )
+            _assert_pdf_geometry_contract(self, source_a)
+            _assert_pdf_geometry_contract(self, source_b)
 
             output_a = root / "tf-a"
             output_b = root / "tf-b"
@@ -143,10 +224,8 @@ class RealPdfDeterminismTests(unittest.TestCase):
             self.assertEqual(_source_snapshot(source_a), _source_snapshot(source_b))
             self.assertEqual(compare_text_fabric_artifacts(output_a, output_b), ())
 
-            # TDD RED: both real PDF conversions and complete comparison above
-            # must succeed before this deliberately missing evidence helper.
-            _assert_synthetic_pdf_contract(self, output_a)  # type: ignore[name-defined]
-            _assert_synthetic_pdf_contract(self, output_b)  # type: ignore[name-defined]
+            _assert_synthetic_pdf_contract(self, output_a)
+            _assert_synthetic_pdf_contract(self, output_b)
 
 
 if __name__ == "__main__":
