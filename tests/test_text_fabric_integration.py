@@ -42,6 +42,63 @@ def _normalized_tf_files(root: Path) -> tuple[dict[str, str], dict[str, int]]:
     return normalized, generated_dates
 
 
+def _write_determinism_fixture(source: Path, *, later_first: bool) -> None:
+    alpha_rows = [
+        {
+            "source_page": 3,
+            "section": "Section α",
+            "root": "bʿl",
+            "headword": "bʿl",
+            "ktu": "1.14",
+            "references": "I 1",
+            "locus": "GP",
+            "room": "1",
+            "point": "p1",
+            "depth": "surface",
+            "disputed": "n",
+            "comments": "synthetic Unicode fixture",
+        },
+        {
+            "source_page": 4,
+            "section": "Section α",
+            "root": "bʿl",
+            "headword": "bʿlt",
+            "ktu": "KTU 1.16",
+            "references": "I 2",
+            "locus": "GP",
+            "room": "1",
+            "point": "",
+            "depth": "",
+            "disputed": "y",
+            "comments": "synthetic second entry",
+        },
+    ]
+    zeta_rows = [
+        {
+            "source_page": 9,
+            "section": "Section β",
+            "root": "mlk",
+            "headword": "mlk",
+            "ktu": "1.15",
+            "references": "II 2",
+            "locus": "PH",
+            "room": "2",
+            "point": "p2",
+            "depth": "deep",
+            "disputed": "n",
+            "comments": "synthetic second worksheet",
+        }
+    ]
+    files = [
+        (source / "Alpha" / "First.csv", alpha_rows),
+        (source / "Zeta" / "Second.csv", zeta_rows),
+    ]
+    if later_first:
+        files.reverse()
+    for path, rows in files:
+        _write_csv(path, rows)
+
+
 class RealTextFabricIntegrationTests(unittest.TestCase):
     def test_synthetic_csv_materializes_and_reloads_with_section_navigation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -119,67 +176,21 @@ class RealTextFabricIntegrationTests(unittest.TestCase):
     def test_repeated_synthetic_csv_materialization_is_semantically_identical(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source = root / "csv"
+            source_a = root / "csv-a"
+            source_b = root / "csv-b"
 
-            # Create the lexically later worksheet first so deterministic source
-            # traversal is exercised instead of accidentally matching creation order.
-            _write_csv(
-                source / "Zeta" / "Second.csv",
-                [
-                    {
-                        "source_page": 9,
-                        "section": "Section β",
-                        "root": "mlk",
-                        "headword": "mlk",
-                        "ktu": "1.15",
-                        "references": "II 2",
-                        "locus": "PH",
-                        "room": "2",
-                        "point": "p2",
-                        "depth": "deep",
-                        "disputed": "n",
-                        "comments": "synthetic second worksheet",
-                    }
-                ],
-            )
-            _write_csv(
-                source / "Alpha" / "First.csv",
-                [
-                    {
-                        "source_page": 3,
-                        "section": "Section α",
-                        "root": "bʿl",
-                        "headword": "bʿl",
-                        "ktu": "1.14",
-                        "references": "I 1",
-                        "locus": "GP",
-                        "room": "1",
-                        "point": "p1",
-                        "depth": "surface",
-                        "disputed": "n",
-                        "comments": "synthetic Unicode fixture",
-                    },
-                    {
-                        "source_page": 4,
-                        "section": "Section α",
-                        "root": "bʿl",
-                        "headword": "bʿlt",
-                        "ktu": "KTU 1.16",
-                        "references": "I 2",
-                        "locus": "GP",
-                        "room": "1",
-                        "point": "",
-                        "depth": "",
-                        "disputed": "y",
-                        "comments": "synthetic second entry",
-                    },
-                ],
-            )
+            # The two source roots contain identical relative files/bytes, but
+            # are created in opposite orders. This proves cache-relevant output
+            # is independent of both absolute root spelling and creation order.
+            _write_determinism_fixture(source_a, later_first=True)
+            _write_determinism_fixture(source_b, later_first=False)
+            source_before_a = _source_snapshot(source_a)
+            source_before_b = _source_snapshot(source_b)
+            self.assertEqual(source_before_a, source_before_b)
 
-            source_before = _source_snapshot(source)
             output_a = root / "tf-a"
             output_b = root / "tf-b"
-            for output in (output_a, output_b):
+            for source, output in ((source_a, output_a), (source_b, output_b)):
                 self.assertEqual(
                     main([
                         "convert",
@@ -192,7 +203,9 @@ class RealTextFabricIntegrationTests(unittest.TestCase):
                     0,
                 )
 
-            self.assertEqual(_source_snapshot(source), source_before)
+            self.assertEqual(_source_snapshot(source_a), source_before_a)
+            self.assertEqual(_source_snapshot(source_b), source_before_b)
+            self.assertEqual(_source_snapshot(source_a), _source_snapshot(source_b))
 
             tf_a, dates_a = _normalized_tf_files(output_a)
             tf_b, dates_b = _normalized_tf_files(output_b)
