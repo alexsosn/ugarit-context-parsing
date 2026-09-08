@@ -9,6 +9,7 @@ from .source import (
     WorkbookRecord,
     WorkbookSource,
     _reject_symlinks,
+    _resolve_source_root,
     _tree_hash,
 )
 
@@ -25,9 +26,7 @@ def load_pdf_directory(
     *,
     parser: Callable[[Path], list[dict[str, object]]] = parse_workbook_pdf,
 ) -> WorkbookSource:
-    source_root = Path(root).resolve()
-    if not source_root.is_dir():
-        raise SourceValidationError(f"source directory does not exist: {root}")
+    source_root = _resolve_source_root(root)
     _reject_symlinks(source_root)
     paths = sorted(
         (path for path in source_root.glob("*/*.pdf") if path.is_file()),
