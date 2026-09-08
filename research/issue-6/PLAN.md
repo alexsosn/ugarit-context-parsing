@@ -13,9 +13,11 @@ No Burns-derived data or new PDF-generation dependency will be introduced.
 - Existing comparator: `ugarit_context_parsing._semantic_compare.compare_text_fabric_artifacts`.
 - Existing CI environment-evidence step remains unchanged and already runs before the full suite on Python 3.10/3.12/3.13.
 
-## Synthetic PDF generator
+## Test isolation
 
-Add test-local helpers to `tests/test_text_fabric_integration.py`; do not create a production PDF-generation API.
+Put all synthetic-PDF generator and replay code in a dedicated `tests/test_pdf_determinism.py`. The CSV integration replay remains untouched, avoiding coupling between two evidence contracts. Do not create a production PDF-generation API.
+
+## Synthetic PDF generator
 
 ### `_pdf_escape(text)`
 
@@ -46,7 +48,7 @@ All synthetic text is original test data.
 
 ## RED commit
 
-Extend `RealTextFabricIntegrationTests` with `test_repeated_synthetic_pdf_materialization_is_semantically_identical`.
+Add `test_repeated_synthetic_pdf_materialization_is_semantically_identical` in `tests/test_pdf_determinism.py`.
 
 The RED test must, before its deliberate failure:
 
@@ -64,7 +66,7 @@ If either real materialization or the semantic comparator fails before the delib
 
 ## GREEN helper
 
-Add only `_assert_synthetic_pdf_contract(testcase, output)` in the integration test unless RED exposed a production defect.
+Add only `_assert_synthetic_pdf_contract(testcase, output)` to `tests/test_pdf_determinism.py` unless RED exposed a production defect.
 
 Load the output independently with real Text-Fabric and assert specific real-parser consequences so the fixture cannot pass while silently bypassing the intended PDF behaviors:
 
