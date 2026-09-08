@@ -52,7 +52,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: alexsosn/Agora
-          ref: 122b27d9326a57f464a7ce6f610385e6d6182999
+          ref: 807db7dcdf09f1aaaae04a7a6a19f193d22af4b9
           path: .agora-contract
       - uses: actions/setup-python@v5
         with:
@@ -60,15 +60,14 @@ jobs:
       - name: Install Agora manifest validator dependency
         run: python -m pip install 'jsonschema>=4,<5'
       - name: Validate manifest with Agora runtime semantics
+        working-directory: .agora-contract
         run: |
           python - <<'PY'
-          import sys
           from pathlib import Path
 
-          sys.path.insert(0, str(Path('.agora-contract').resolve()))
           from scripts.agora_materialize import load_manifest
 
-          manifest = load_manifest(Path('agora.materializer.json'))
+          manifest = load_manifest(Path('../agora.materializer.json'))
           assert manifest['plugin']['id'] == 'ugarit-context-parsing'
           assert [item['id'] for item in manifest['materializers']] == [
               'burns-workbooks-csv-text-fabric',
