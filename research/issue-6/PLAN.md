@@ -83,6 +83,14 @@ Load the output independently with real Text-Fabric and assert specific real-par
 
 Run the helper against both outputs, not only one, after comparator equality.
 
+### Post-RED evidence strengthening
+
+The exact RED head `422d0e237321d9dffd9eabe4a6de85089c40ecc1` and run `34283572929` established that both real PDF materializations completed with four records and the complete comparator returned equality before the deliberate missing-helper `NameError`.
+
+Before freezing GREEN for adversarial review, an evidence-scope challenge identified one gap in the original GREEN wording: downstream semantic equality alone cannot distinguish whether the ruled fixture used derived boundaries or happened to produce the same rows through canonical fallback. The GREEN test therefore also adds `_assert_pdf_geometry_contract()` as a test-harness-only strengthening. It opens each ephemeral synthetic PDF with real `pdfplumber`, requires exactly ten vertical edges for `Alpha/Ruled.pdf` and zero for `Zeta/Fallback.pdf`, and invokes the production `file_bounds()` function on both. This records direct evidence that the two intended geometry branches are reachable for the generated inputs while leaving production converter code unchanged.
+
+This strengthening does not widen the determinism claim, add a PDF-specific ignore rule, or alter the already-preserved RED contract. The earlier “add only” sentence remains above as the pre-RED plan; this amendment documents the deliberate post-RED strengthening rather than rewriting that history.
+
 ## Test gates
 
 For the final exact head require:
