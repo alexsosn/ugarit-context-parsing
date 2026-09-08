@@ -1,147 +1,124 @@
-# Research: repeated-run semantic determinism for Burns materializers (#5)
+# Research: completeness of Burns CSV determinism evidence (#5)
 
 ## Question
 
-What exactly must remain equal across repeated Burns materializer runs before Agora may treat one managed output as reusable for an equivalent request?
+What evidence is still missing before Agora may treat the Burns CSV materializer as semantically deterministic for one exact verified runtime environment?
 
-## Baseline
+## Current baseline
 
-Inspected `master` at `e1218b88d9d849c58ee25541339f32b0d8f5a7d3`.
+Revalidated against `master@f271e5697a2dc5c13c783338e2a603ab5434678b`, which merged PR #4 / issue #3 after the original #5 research began.
 
-Relevant code/tests:
+Current `tests/test_text_fabric_integration.py` now already contains a real repeated-run CSV determinism test. It:
 
-- `src/ugarit_context_parsing/source.py`
-- `src/ugarit_context_parsing/pdf_source.py`
-- `src/ugarit_context_parsing/graph.py`
-- `src/ugarit_context_parsing/report.py`
-- `src/ugarit_context_parsing/writer.py`
-- `src/ugarit_context_parsing/cli.py`
-- `tests/test_text_fabric_integration.py`
-- `tests/test_materialization.py`
-- `tests/test_pdf_materialization.py`
-- `agora.materializer.json`
-- `pyproject.toml`
+- creates two synthetic source roots with identical relative files/bytes but opposite creation order;
+- executes the real CLI twice into fresh output directories;
+- proves source bytes remain unchanged;
+- compares every emitted `.tf` file byte-for-byte after removing only Text-Fabric's generated `@dateWritten=` line;
+- compares complete `conversion-report.json` objects;
+- independently reloads both outputs with real `Fabric(...).loadAll()`;
+- compares `Fall()` and `Eall()` inventories, every node feature value across the full node range, node types, and section/navigation structure.
+
+That is strong evidence and supersedes the earlier statement that integration coverage was one-shot. #5 is therefore a completeness-hardening ticket, not a request to invent replay from scratch.
 
 ## Findings
 
-### 1. CSV input discovery and graph construction are structurally deterministic
+### 1. Current replay already establishes source-root and filesystem-creation-order independence
 
-The CSV loader selects only `*/*.csv` inputs and orders discovered paths by normalized repository-relative POSIX path before reading records. The graph builder enumerates the resulting record sequence deterministically, assigns slot/node IDs in traversal order, constructs worksheet/section/entry nodes in the same sequence, and uses only deterministic counters for duplicate labels.
+The merged #4 test deliberately creates identical CSV trees in different absolute roots and opposite file-creation order. Both runs resolve to identical source snapshots and generated scholarly output. This directly exercises the sorted CSV discovery contract and proves absolute source-root spelling does not enter converter output.
 
-No wall clock, random generator, process ID, hostname, or ambient network result participates in `build_tf_data()`.
+No additional duplicate replay test is needed merely to establish that property.
 
-The generated graph metadata is static source/converter metadata. It does not contain a creation timestamp.
+### 2. Complete normalized persisted bytes are a strong backstop, but not the semantic API contract
 
-### 2. The conversion report is content-derived
+The existing comparison of all `.tf` files after removing only `@dateWritten=` is stricter than a semantic comparison within the currently resolved Text-Fabric runtime. It catches any persisted body/header difference that survives the one explicit generated timestamp exclusion.
 
-`build_conversion_report()` derives its fields from the normalized source and `TFData`:
+However, Agora's reusable-cache policy is intentionally defined in terms of semantic/content determinism inside an exact verified runtime environment. The replay should therefore also express the complete loaded semantic state explicitly rather than relying on serializer bytes as the only exhaustive backstop.
 
-- converter name/version;
-- source format/tree hash/file count;
-- record/node/edge and domain-specific counts;
-- semantic checks.
+The normalized byte comparison should stay. #5 adds semantic completeness; it should not weaken the existing test or broaden the normalization whitelist.
 
-The report contains no wall-clock timestamp or random identifier. `writer.py` writes it using `json.dumps(..., sort_keys=True)`, so JSON key order is deterministic as well.
+### 3. Node-feature coverage is already complete
 
-### 3. Text-Fabric bytes are not the right primary determinism contract
+The current test dynamically enumerates `Fall()` and compares every feature value for every node in the full node range. This covers `otype`, source provenance, domain features, generated hierarchy labels, CUC identifiers, and future node features without a hard-coded allowlist.
 
-`writer.py` delegates `.tf` serialization to the installed Text-Fabric runtime. Even when the in-memory graph is identical, byte-level serialization is an implementation detail of the resolved Text-Fabric version and should not be elevated into the scholarly determinism contract.
+No separate node-feature comparator is missing.
 
-Agora already records the exact resolved runtime/dependency environment separately as an execution identity. Reuse should therefore be evidenced within one exact managed execution environment, while semantic equality is established by reloading and comparing the emitted Text-Fabric graph/features.
+### 4. Edge-feature *inventory* is compared, but edge mappings/values are not
 
-Byte equality may be measured diagnostically, but semantic replay must not fail solely because a future Text-Fabric serializer changes irrelevant formatting while reloading to the same graph.
+The current test asserts `tuple(api_a.Eall()) == tuple(api_b.Eall())`, but it does not compare `Es(feature).items()` for each edge feature.
 
-### 4. Existing real integration coverage is one-shot
+Today the converter emits `oslots`, and the exhaustive normalized `.tf` byte comparison catches drift in that file. But a semantic replay contract should directly compare every loaded edge mapping and retain values if valued edge features are introduced later.
 
-`tests/test_text_fabric_integration.py` constructs a legal synthetic CSV fixture, runs the real CLI once, verifies required files/report, reloads through real `tf.fabric.Fabric`, and checks representative records/section navigation.
+This is the main semantic-completeness gap.
 
-That test proves real materialization/loadability but not repeated-run equivalence. There is no current negative control proving a semantic comparator would detect a perturbed output.
+### 5. Feature metadata is not explicitly compared through the loaded API
 
-### 5. Semantic equality needs to cover the complete TF surface, not a representative subset
+Persisted `.tf` equality currently catches metadata differences except `@dateWritten`, but the loaded semantic snapshot does not record `Fs(feature).meta` / `Es(feature).meta`.
 
-A reusable-cache evidence test must compare all scholarly/content state that a downstream Text-Fabric consumer can observe. At minimum:
+Content-bearing metadata such as dataset/source/license/feature descriptions/value types is part of the emitted contract and should be represented in the semantic snapshot. Text-Fabric-generated `dateWritten` is the one known volatile metadata field and must be excluded explicitly, matching the existing persisted normalization. No blanket metadata ignore is justified.
 
-- node types for every node;
-- maximum slot/node and complete node inventory;
-- every emitted node feature and all node→value mappings;
-- every emitted edge feature and all source→target/value mappings;
-- dataset/config metadata exposed by the TF API where stable and content-bearing;
-- section hierarchy/navigation implied by `otext` plus graph structure;
-- all semantically meaningful `conversion-report.json` fields.
+### 6. The current comparator has no negative control
 
-A comparator that checks only a few known features could incorrectly bless nondeterminism in another feature.
+The merged replay proves two real outputs compare equal, but it does not prove a reusable semantic-normalization helper would detect a meaningful mutation.
 
-### 6. Source provenance values are semantic and must match
+A test-only semantic snapshot should have negative controls that mutate copied normalized state and prove inequality for at least:
 
-Relative `source_file`, `source_row`, `source_page`, source-tree hash, source format, file count, and generated CUC identifier features are part of the output contract. They must be compared, not ignored.
+- a node-feature value;
+- an edge mapping/value;
+- a conversion-report field.
 
-Machine-local absolute source/output paths are not emitted into the TF graph/report and are not part of semantic identity.
+These controls should not modify converter production code or generated source fixtures.
 
-### 7. CSV replay can use fully synthetic redistributable data
+### 7. Current fixture does not exercise duplicate generated `~N` hierarchy labels
 
-The existing two-row synthetic fixture is sufficient to exercise:
+The existing fixture exercises multiple worksheets, sections, entries, Unicode values, KTU normalization, and creation-order independence, but its repeated section/entry labels do not force `_occurrence_label()` to generate a `~2` suffix.
 
-- hierarchy creation;
-- Unicode Ugaritic values;
-- multiple KTU identifiers;
-- relative source path provenance;
-- report generation;
-- Text-Fabric save/reload.
+Because duplicate-label counters are deterministic state, the evidence fixture should include a non-contiguous repeated section/entry label and assert the expected suffixed hierarchy label. This is a test-fixture hardening change only.
 
-For stronger replay evidence, the fixture should include at least two worksheet paths/sections and a duplicate entry/section-label case so ordering and generated `~N` labels are exercised rather than remaining trivial.
+### 8. Environment identity is still missing from the evidence log
 
-No Burns-derived real CSV/PDF data is necessary and none should be committed or uploaded.
+`pyproject.toml` intentionally permits dependency ranges such as `text-fabric>=13.1,<14` and `pdfplumber>=0.11`. The same converter commit can therefore run under different resolved dependency/runtime closures.
 
-### 8. PDF determinism is a separate evidence problem
+The ordinary CI matrix identifies Python versions, but the replay itself does not emit a canonical record of the actual platform and resolved installed distributions used for the evidence run.
 
-The PDF materializer invokes the packaged `pdfplumber`-based parser. Its geometry/text extraction is deterministic-looking in source code and source paths are sorted, but real PDF extraction behavior is a dependency/runtime concern. Mocking the parser is insufficient evidence for reusable PDF output.
+#5 should print one deterministic `DETERMINISM_ENVIRONMENT=<json>` record containing Python implementation/version, OS/platform/machine, and sorted installed distribution names/versions. No generated TF artifact should be uploaded.
 
-PDF should remain un-attested until a synthetic PDF fixture can legally exercise the real parser twice under one exact environment and the resulting TF semantics are compared.
+This upstream evidence still does **not** authorize Agora reuse by itself. Agora must independently replay/verify inside the exact managed installation and bind reusable policy to its integrity-verified `execution_identity_sha256`.
 
-CSV evidence must not be generalized to PDF.
+### 9. PDF remains a separate evidence problem
 
-### 9. Environment identity must accompany the replay
+Nothing in merged #4 or this hardening ticket proves the PDF materializer deterministic. Real PDF extraction depends on the packaged pdfplumber-based parser and resolved runtime behavior.
 
-`pyproject.toml` intentionally allows version ranges (`text-fabric>=13.1,<14`, `pdfplumber>=0.11`, plus a platform-specific `cryptography` bound). Thus the same converter commit can run under different resolved dependency trees.
+PDF must remain unknown/non-reusable until an equivalent legal synthetic-PDF replay exercises the real parser twice.
 
-The upstream test should report reproducible environment information (Python/platform and resolved installed distributions or an equivalent lock/digest). Agora will separately bind reusable authorization to its verified managed `execution_identity_sha256`; this upstream record is evidence, not a substitute for that Agora trust boundary.
+## Revised evidence boundary
 
-### 10. A negative control is required
+### Already proven by merged #4
 
-A semantic comparison helper can accidentally be incomplete or normalize away meaningful changes. Its test suite must deliberately perturb one semantic value/edge/report field and prove comparison fails.
+- two real CSV CLI executions;
+- distinct absolute source/output roots;
+- opposite source-file creation order;
+- source immutability;
+- normalized equality of every generated `.tf` file modulo only `@dateWritten`;
+- complete conversion-report equality;
+- complete dynamic node-feature equality;
+- feature-inventory equality;
+- section/navigation equality;
+- real Text-Fabric save/reload.
 
-The negative control should mutate only the in-test copy/output; it must not add production nondeterminism.
+### Still required by #5
 
-## Semantic normalization boundary
+- dynamic equality of every loaded edge feature mapping/value;
+- loaded feature metadata equality excluding only generated `dateWritten`;
+- negative controls proving semantic-snapshot sensitivity;
+- duplicate generated-label fixture coverage;
+- canonical environment evidence in CI logs.
 
-### Compare
+## TDD implication
 
-- complete node/edge feature inventories and values;
-- node-type/node-count/slot-count identity;
-- content-bearing TF/config metadata;
-- report converter/source/count/check/status fields;
-- relative source provenance and tree hash;
-- generated hierarchy labels/identifiers.
+The RED should extend the existing merged replay rather than duplicate it. Add an intentionally unimplemented test-only semantic-snapshot seam that is invoked **after** both real conversions and the existing persisted/API assertions succeed. The first #5 RED must fail with `NotImplementedError` at that seam.
 
-### Do not use as semantic equality inputs
-
-- output directory path;
-- temporary directory names;
-- file mtimes/permissions unrelated to TF semantics;
-- stdout timing lines from the CLI;
-- future outer Agora provenance such as `created_at` (not emitted by this upstream converter itself).
-
-No current converter-owned report field has been identified as volatile and therefore none should be ignored in v1.
-
-## Implementation direction
-
-1. Add a tests-only semantic snapshot/comparison helper over a real loaded TF artifact plus conversion report.
-2. Build a richer synthetic CSV fixture entirely in the test.
-3. RED: execute the real CLI twice into distinct fresh outputs and require complete semantic equality plus a negative control; first commit should fail because the helper/replay contract is absent or intentionally asserts the missing test surface.
-4. GREEN should preferably be tests/harness only. Change converter production code only if the replay exposes actual nondeterminism.
-5. Record environment identity in the CI evidence path without uploading generated TF artifacts.
-6. Keep PDF outside the CSV claim until a real synthetic-PDF replay exists.
+GREEN should implement only the test harness/snapshot and fixture/evidence additions unless a genuine converter semantic delta is discovered. If repeated outputs differ semantically, stop and create a focused converter RED before any production change.
 
 ## Scope boundary
 
-This ticket proves behavior of the upstream converter. It does not add Agora cache semantics, change scholarly normalization, redistribute Burns data, or make a claim about PDF determinism without real-parser evidence.
+This ticket strengthens evidence for the existing CSV converter. It does not alter Agora cache behavior, change scholarly normalization, redistribute Burns-derived data, weaken the existing normalized-byte check, or imply PDF determinism.
