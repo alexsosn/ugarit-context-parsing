@@ -7,7 +7,11 @@ on:
   pull_request:
     paths:
       - 'src/ugarit_context_parsing/cuc_index.py'
+      - 'src/ugarit_context_parsing/alignment.py'
+      - 'src/ugarit_context_parsing/annotations.py'
+      - 'src/ugarit_context_parsing/references.py'
       - 'tests/test_cuc_index.py'
+      - 'tests/test_burns_alignment.py'
       - '.github/workflows/test-reviewed-cuc-index.yml'
       - 'scripts/check_ci_provenance.py'
       - 'pyproject.toml'
@@ -49,6 +53,19 @@ jobs:
       - name: Build exact reviewed CUC index through public gate
         run: |
           python - <<'PY'
+          from ugarit_context_parsing.alignment import (
+              BurnsAlignmentConfidence,
+              BurnsAlignmentDisposition,
+              BurnsAnchorKind,
+              align_burns_annotation,
+          )
+          from ugarit_context_parsing.annotations import (
+              BurnsAnnotation,
+              BurnsInterpretiveStatus,
+              BurnsSemanticStatus,
+              BurnsTextualStatus,
+              BurnsWorksheetRole,
+          )
           from ugarit_context_parsing.cuc_index import (
               REVIEWED_CUC_COMMIT,
               REVIEWED_CUC_COUNTS,
@@ -80,4 +97,45 @@ jobs:
               assert nodes == tuple(sorted(nodes))
           for words in index.line_words.values():
               assert isinstance(words, tuple)
+
+          # Exercise the production aligner against the verified real index with
+          # a legal synthetic tablet-only annotation. No Burns-derived payload is
+          # used or written, and alignment must not mutate the reviewed index.
+          before = (
+              len(index.tablet_nodes),
+              len(index.column_nodes),
+              len(index.line_nodes),
+              len(index.word_g_cons),
+          )
+          synthetic = BurnsAnnotation(
+              annotation_id='burns-annotation-sha256:synthetic-reviewed-cuc-contract',
+              worksheet_id='01 Synthetic/Worksheet 1',
+              workbook_number=1,
+              workbook_label='01 Synthetic',
+              worksheet_number=1,
+              worksheet_role=BurnsWorksheetRole.PRIME_GP,
+              first_source_row=1,
+              section='Section α',
+              root='',
+              headword='synthetic',
+              ktu='1.14',
+              references='',
+              textual_status=BurnsTextualStatus.TEXTUAL,
+              semantic_status=BurnsSemanticStatus.POSITIVE_FIXED,
+              interpretive_status=BurnsInterpretiveStatus.UNSPECIFIED,
+              record_ids=('burns-record-sha256:synthetic-reviewed-cuc-contract',),
+          )
+          aligned = align_burns_annotation(synthetic, index)
+          assert aligned.disposition is BurnsAlignmentDisposition.ALIGNED
+          assert len(aligned.occurrences) == 1
+          occurrence = aligned.occurrences[0]
+          assert occurrence.anchor_kind is BurnsAnchorKind.TABLET
+          assert occurrence.confidence is BurnsAlignmentConfidence.EXACT_STRUCTURAL
+          assert occurrence.anchor_nodes == (index.tablet_nodes['KTU 1.14'],)
+          assert before == (
+              len(index.tablet_nodes),
+              len(index.column_nodes),
+              len(index.line_nodes),
+              len(index.word_g_cons),
+          )
           PY
