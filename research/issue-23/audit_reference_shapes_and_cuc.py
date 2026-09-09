@@ -36,17 +36,24 @@ REQUIRED_FILES = (
     "line.tf",
     "g_cons.tf",
 )
-_ROMAN_TOKEN = re.compile(r"(?<![\w])(?:[IVXLCDM]+)(?![\w])")
 _NUMBER = re.compile(r"\d+")
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
+_ROMAN_WORD = re.compile(r"[IVXLCDM]+", re.IGNORECASE)
 _SPACE = re.compile(r"\s+")
 
 
 def structural_shape(text: str) -> str:
     value = unicodedata.normalize("NFC", text.strip())
-    value = _ROMAN_TOKEN.sub("R", value)
+
+    # Classify source alphabetic tokens in one pass. Roman-numeral words must
+    # remain distinguishable from prose; do not use alphabetic placeholders and
+    # then feed those placeholders through a second word-replacement pass.
+    def classify_word(match: re.Match[str]) -> str:
+        token = match.group(0)
+        return "R" if _ROMAN_WORD.fullmatch(token) else "W"
+
+    value = _WORD.sub(classify_word, value)
     value = _NUMBER.sub("N", value)
-    value = _WORD.sub("W", value)
     return _SPACE.sub(" ", value).strip()
 
 
@@ -139,7 +146,6 @@ def burns_probe() -> dict[str, object]:
         normalized = normalize_workbook_records(source.records)
 
         shapes: Counter[str] = Counter()
-        textual_shapes: Counter[str] = Counter()
         empty_textual = 0
         non_textual = 0
         for annotation in normalized.annotations:
@@ -151,7 +157,6 @@ def burns_probe() -> dict[str, object]:
                 empty_textual += 1
                 continue
             shapes[shape] += 1
-            textual_shapes[shape] += 1
 
         return {
             "pdfs": len(source.files),
@@ -162,7 +167,7 @@ def burns_probe() -> dict[str, object]:
             "distinct_structural_shapes": len(shapes),
             "top_structural_shapes": [
                 {"shape": shape, "count": count}
-                for shape, count in textual_shapes.most_common(80)
+                for shape, count in shapes.most_common(80)
             ],
         }
 
