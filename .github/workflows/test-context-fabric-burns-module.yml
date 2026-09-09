@@ -5,9 +5,11 @@ on:
     paths:
       - 'src/ugarit_context_parsing/alignment.py'
       - 'src/ugarit_context_parsing/annotations.py'
+      - 'src/ugarit_context_parsing/cli.py'
       - 'src/ugarit_context_parsing/cuc_index.py'
       - 'src/ugarit_context_parsing/module.py'
       - 'src/ugarit_context_parsing/references.py'
+      - 'tests/test_module_cli.py'
       - 'scripts/check_context_fabric_burns_module_contract.py'
       - '.github/workflows/test-context-fabric-burns-module.yml'
       - 'scripts/check_ci_provenance.py'
