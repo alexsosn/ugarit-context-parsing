@@ -51,7 +51,10 @@ class CiActionPinTests(unittest.TestCase):
             for path in paths
             for ref in _action_refs(path.read_text(encoding="utf-8"))
         )
-        expected = Counter({CHECKOUT: 7, SETUP_PYTHON: 4})
+        # The dedicated Context-Fabric Burns module contract contributes three
+        # immutable checkout refs (producer, CUC, consumer) and one setup-python
+        # ref to the previously reviewed 7/4 repository totals.
+        expected = Counter({CHECKOUT: 10, SETUP_PYTHON: 5})
         self.assertEqual(actual, expected)
 
 
