@@ -57,6 +57,36 @@ _PROJECTION_FIELDS = {
     "burns_headwords": "headword",
 }
 
+_ANNOTATION_RECORD_FIELDS = (
+    "worksheet_id",
+    "workbook_number",
+    "workbook_label",
+    "worksheet_number",
+    "worksheet_role",
+    "section",
+    "root",
+    "headword",
+    "ktu",
+    "references",
+    "textual_status",
+    "semantic_status",
+    "interpretive_status",
+)
+
+_ALIGNMENT_OCCURRENCE_FIELDS = (
+    "occurrence_id",
+    "target_ordinal",
+    "target",
+    "disposition",
+    "reason",
+    "confidence",
+    "anchor_kind",
+    "anchor_nodes",
+    "context_line_node",
+    "candidate_line_nodes",
+    "candidate_spans",
+)
+
 
 class _FabricLike(Protocol):
     def save(self, **kwargs) -> bool: ...
@@ -485,15 +515,17 @@ def _validate_report_for_write(
     if not isinstance(source_records, list):
         raise ValueError("Burns module report source_records inventory is missing or invalid")
     source_ids: list[str] = []
+    source_by_id: dict[str, dict[str, object]] = {}
     for row in source_records:
         if not isinstance(row, dict):
             raise ValueError("Burns module report source_records members must be objects")
         record_id = row.get("record_id")
         if not isinstance(record_id, str) or not record_id:
             raise ValueError("Burns module report source record has invalid identity")
+        if record_id in source_by_id:
+            raise ValueError("Burns module report contains duplicate source record identities")
         source_ids.append(record_id)
-    if len(source_ids) != len(set(source_ids)):
-        raise ValueError("Burns module report contains duplicate source record identities")
+        source_by_id[record_id] = row
 
     counts = report.get("counts")
     if not isinstance(counts, Mapping):
@@ -518,21 +550,119 @@ def _validate_report_for_write(
     if alignment.get("cuc_compatibility") != _reviewed_compatibility_payload():
         raise ValueError("Burns module report embedded alignment compatibility is invalid")
     alignment_counts = alignment.get("counts")
-    if not isinstance(alignment_counts, Mapping) or alignment_counts.get("records") != len(source_ids):
+    if not isinstance(alignment_counts, Mapping):
+        raise ValueError("Burns module report embedded alignment counts are invalid")
+    if alignment_counts.get("records") != len(source_ids):
         raise ValueError("Burns module report embedded alignment record count is inconsistent")
+
     annotations = alignment.get("annotations")
     if not isinstance(annotations, list):
         raise ValueError("Burns module report embedded alignment annotations are invalid")
+    annotation_count = len(annotations)
+    if counts.get("annotations") != annotation_count:
+        raise ValueError("Burns module report annotation count is inconsistent")
+    if alignment_counts.get("annotations") != annotation_count:
+        raise ValueError("Burns module report embedded alignment annotation count is inconsistent")
+
     claimed_ids: list[str] = []
+    disposition_counter: Counter[str] = Counter()
+    selected_from_report: dict[tuple[str, str], tuple[dict[str, object], dict[str, object]]] = {}
     for annotation in annotations:
         if not isinstance(annotation, dict):
             raise ValueError("Burns module report alignment annotation is invalid")
+        annotation_id = annotation.get("annotation_id")
+        if not isinstance(annotation_id, str) or not annotation_id:
+            raise ValueError("Burns module report alignment annotation identity is invalid")
+        annotation_disposition = annotation.get("disposition")
+        annotation_reason = annotation.get("reason")
+        if not isinstance(annotation_disposition, str) or not annotation_disposition:
+            raise ValueError("Burns module report alignment disposition is invalid")
+        if not isinstance(annotation_reason, str) or not annotation_reason:
+            raise ValueError("Burns module report alignment reason is invalid")
+        disposition_counter[annotation_disposition] += 1
+
         record_ids = annotation.get("record_ids")
         if not isinstance(record_ids, list) or not all(isinstance(item, str) for item in record_ids):
             raise ValueError("Burns module report alignment record provenance is invalid")
         claimed_ids.extend(record_ids)
+
+        alignment_occurrences = annotation.get("occurrences")
+        if not isinstance(alignment_occurrences, list):
+            raise ValueError("Burns module report alignment occurrences are invalid")
+        for occurrence in alignment_occurrences:
+            if not isinstance(occurrence, dict):
+                raise ValueError("Burns module report alignment occurrence is invalid")
+            occurrence_id = occurrence.get("occurrence_id")
+            if not isinstance(occurrence_id, str) or not occurrence_id:
+                raise ValueError("Burns module report occurrence identity is invalid")
+            anchor_kind = occurrence.get("anchor_kind")
+            anchor_nodes = occurrence.get("anchor_nodes")
+            if anchor_kind is None:
+                if anchor_nodes not in ([], ()):
+                    raise ValueError("unselected Burns alignment occurrence has anchor nodes")
+                continue
+            if anchor_kind not in {"tablet", "line", "word_span"}:
+                raise ValueError("Burns module report occurrence anchor kind is invalid")
+            if not isinstance(anchor_nodes, list) or not anchor_nodes:
+                raise ValueError("selected Burns alignment occurrence has invalid anchor nodes")
+            key = (annotation_id, occurrence_id)
+            if key in selected_from_report:
+                raise ValueError("Burns module report contains duplicate selected occurrence identity")
+            selected_from_report[key] = (annotation, occurrence)
+
     if len(claimed_ids) != len(set(claimed_ids)) or set(claimed_ids) != set(source_ids):
         raise ValueError("Burns module report source records are not exactly partitioned by annotations")
+
+    disposition_counts = dict(sorted(disposition_counter.items()))
+    if counts.get("alignment_dispositions") != disposition_counts:
+        raise ValueError("Burns module report alignment disposition counts are inconsistent")
+    if alignment_counts.get("dispositions") != disposition_counts:
+        raise ValueError("Burns module report embedded alignment disposition counts are inconsistent")
+
+    if set(selected_from_report) != set(occurrences):
+        raise ValueError("Burns module and alignment report selected occurrence inventories disagree")
+
+    for key, (annotation_entry, occurrence_entry) in selected_from_report.items():
+        canonical, anchor_nodes, anchor_kind, _ = occurrences[key]
+        payload = json.loads(canonical)
+        if tuple(occurrence_entry["anchor_nodes"]) != anchor_nodes:
+            raise ValueError("Burns module and alignment report occurrence anchors disagree")
+        if occurrence_entry.get("anchor_kind") != anchor_kind:
+            raise ValueError("Burns module and alignment report occurrence anchor kinds disagree")
+        for field in _ALIGNMENT_OCCURRENCE_FIELDS:
+            if payload.get(field) != occurrence_entry.get(field):
+                raise ValueError(
+                    f"Burns module and alignment report occurrence field {field} disagrees"
+                )
+        if payload.get("annotation_disposition") != annotation_entry.get("disposition"):
+            raise ValueError("Burns module and alignment report annotation disposition disagrees")
+        if payload.get("annotation_reason") != annotation_entry.get("reason"):
+            raise ValueError("Burns module and alignment report annotation reason disagrees")
+
+        payload_record_ids = payload.get("record_ids")
+        payload_records = payload.get("source_records")
+        if payload_record_ids != annotation_entry.get("record_ids"):
+            raise ValueError("Burns module and alignment report record provenance disagrees")
+        if not isinstance(payload_record_ids, list) or not isinstance(payload_records, list):
+            raise ValueError("Burns node payload source record provenance is invalid")
+        if len(payload_record_ids) != len(payload_records):
+            raise ValueError("Burns node payload source record provenance length is inconsistent")
+
+        for record_id, payload_record in zip(payload_record_ids, payload_records):
+            if not isinstance(record_id, str) or not isinstance(payload_record, dict):
+                raise ValueError("Burns node payload source record provenance is invalid")
+            if payload_record.get("record_id") != record_id:
+                raise ValueError("Burns node payload source record identity is inconsistent")
+            report_record = source_by_id.get(record_id)
+            if report_record is None:
+                raise ValueError("Burns node payload references a missing report source record")
+            if payload_record != report_record:
+                raise ValueError("Burns node payload source record disagrees with report inventory")
+            for field in _ANNOTATION_RECORD_FIELDS:
+                if payload.get(field) != report_record.get(field):
+                    raise ValueError(
+                        f"Burns node annotation field {field} disagrees with source record"
+                    )
 
 
 def _validate_module_for_write(module: BurnsModuleData, report: Mapping[str, object]) -> None:
