@@ -73,10 +73,12 @@ class CiProvenanceWorkflowContractTests(unittest.TestCase):
         workflow = """jobs:
   alpha:
     steps:
-      - run: python scripts/check_ci_provenance.py
+      - name: provenance
+        run: python scripts/check_ci_provenance.py
   beta:
     steps:
-      - run: echo ok
+      - name: ordinary
+        run: echo ok
 """
         jobs = _job_blocks(workflow)
         self.assertEqual(set(jobs), {"alpha", "beta"})
