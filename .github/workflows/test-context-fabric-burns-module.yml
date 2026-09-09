@@ -38,11 +38,11 @@ jobs:
           path: .cuc
           persist-credentials: false
 
-      - name: Check out exact Context-Fabric consumer under review
+      - name: Check out exact merged Context-Fabric consumer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: alexsosn/context-fabric
-          ref: 7cb3e1f52ea902838b31b1aa368e5a3664d96244
+          ref: 6cd0f73f2e806c23e8406c440760139302c5671b
           path: .context-fabric
           persist-credentials: false
 
@@ -76,7 +76,7 @@ jobs:
               "python_implementation": platform.python_implementation(),
               "platform": platform.platform(),
               "packages": packages,
-              "context_fabric_commit": "7cb3e1f52ea902838b31b1aa368e5a3664d96244",
+              "context_fabric_commit": "6cd0f73f2e806c23e8406c440760139302c5671b",
               "cuc_commit": "ad69400f5446e1c8217af01659c7c10ab00c015b",
           }
           canonical = json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
