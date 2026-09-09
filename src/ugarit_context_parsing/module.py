@@ -49,6 +49,14 @@ _DESCRIPTIONS = {
     "burns_headwords": "Canonical JSON array of Burns source headwords",
 }
 
+_PROJECTION_FIELDS = {
+    "burns_annotation_ids": "annotation_id",
+    "burns_semantic_statuses": "semantic_status",
+    "burns_worksheet_roles": "worksheet_role",
+    "burns_sections": "section",
+    "burns_headwords": "headword",
+}
+
 
 class _FabricLike(Protocol):
     def save(self, **kwargs) -> bool: ...
@@ -69,17 +77,21 @@ def _canonical_json(value: object) -> str:
     )
 
 
-def _compatibility_payload(index: ReviewedCucIndex) -> dict[str, str]:
-    compatibility = index.compatibility
-    if compatibility is None:
-        raise ValueError("Burns TF module requires a reviewed CUC compatibility identity")
-
-    expected = {
+def _reviewed_compatibility_payload() -> dict[str, str]:
+    return {
         "repository": REVIEWED_CUC_REPOSITORY,
         "commit": REVIEWED_CUC_COMMIT,
         "version": REVIEWED_CUC_VERSION,
         "manifest_sha256": REVIEWED_CUC_MANIFEST_SHA256,
     }
+
+
+def _compatibility_payload(index: ReviewedCucIndex) -> dict[str, str]:
+    compatibility = index.compatibility
+    if compatibility is None:
+        raise ValueError("Burns TF module requires a reviewed CUC compatibility identity")
+
+    expected = _reviewed_compatibility_payload()
     actual = {
         "repository": compatibility.repository,
         "commit": compatibility.commit,
@@ -119,6 +131,7 @@ def _target_payload(target) -> dict[str, object]:
 
 def _occurrence_payload(
     annotation: BurnsAnnotation,
+    alignment: BurnsAnnotationAlignment,
     records_by_id: Mapping[str, BurnsSourceRecord],
     occurrence,
 ) -> dict[str, object]:
@@ -151,6 +164,8 @@ def _occurrence_payload(
         "textual_status": annotation.textual_status.value,
         "semantic_status": annotation.semantic_status.value,
         "interpretive_status": annotation.interpretive_status.value,
+        "annotation_disposition": alignment.disposition.value,
+        "annotation_reason": alignment.reason.value,
         "disposition": occurrence.disposition.value,
         "reason": occurrence.reason.value,
         "confidence": occurrence.confidence.value,
@@ -201,6 +216,31 @@ def burns_node_annotations(value: str) -> tuple[dict[str, object], ...]:
     return tuple(result)
 
 
+def _project_payloads(
+    payloads: tuple[dict[str, object], ...],
+) -> dict[str, str]:
+    return {
+        feature: _canonical_json(
+            sorted({str(item[payload_field]) for item in payloads})
+        )
+        for feature, payload_field in _PROJECTION_FIELDS.items()
+    }
+
+
+def _expected_feature_metadata(feature: str) -> dict[str, str]:
+    compatibility = _reviewed_compatibility_payload()
+    return {
+        "valueType": "str",
+        "module": "Burns",
+        "moduleSchema": MODULE_SCHEMA,
+        "cucRepository": compatibility["repository"],
+        "cucCommit": compatibility["commit"],
+        "cucVersion": compatibility["version"],
+        "cucManifestSha256": compatibility["manifest_sha256"],
+        "description": _DESCRIPTIONS[feature],
+    }
+
+
 def _immutable_nested(
     values: Mapping[str, Mapping[int, str]],
 ) -> Mapping[str, Mapping[int, str]]:
@@ -228,14 +268,13 @@ def build_burns_module(
     alignments: tuple[BurnsAnnotationAlignment, ...],
     index: ReviewedCucIndex,
 ) -> BurnsModuleData:
-    compatibility = _compatibility_payload(index)
+    _compatibility_payload(index)
 
     # Reuse #26 as the integrity gate. This rejects missing/extra/forged
     # alignments and proves every normalized source record is partitioned
     # exactly once before any node payload is emitted.
     build_alignment_report(source, alignments, index)
 
-    annotations_by_id = {annotation.annotation_id: annotation for annotation in source.annotations}
     alignments_by_id = {alignment.annotation_id: alignment for alignment in alignments}
     records_by_id = {record.record_id: record for record in source.records}
 
@@ -252,7 +291,7 @@ def build_burns_module(
             if occurrence.anchor_kind is not BurnsAnchorKind.WORD_SPAN and len(occurrence.anchor_nodes) != 1:
                 raise ValueError("non-span Burns occurrence must select exactly one CUC node")
 
-            payload = _occurrence_payload(annotation, records_by_id, occurrence)
+            payload = _occurrence_payload(annotation, alignment, records_by_id, occurrence)
             identity = _payload_identity(payload)
             canonical = _canonical_json(payload)
             for node in occurrence.anchor_nodes:
@@ -281,32 +320,15 @@ def build_burns_module(
         # Derive every convenience feature from the authoritative serialized
         # value, keeping burns_annotations as the sole source of truth.
         parsed = burns_node_annotations(value)
-        projected = {
-            "burns_annotation_ids": sorted({str(item["annotation_id"]) for item in parsed}),
-            "burns_semantic_statuses": sorted({str(item["semantic_status"]) for item in parsed}),
-            "burns_worksheet_roles": sorted({str(item["worksheet_role"]) for item in parsed}),
-            "burns_sections": sorted({str(item["section"]) for item in parsed}),
-            "burns_headwords": sorted({str(item["headword"]) for item in parsed}),
-        }
-        for feature, values in projected.items():
-            projections[feature][node] = _canonical_json(values)
+        for feature, projected_value in _project_payloads(parsed).items():
+            projections[feature][node] = projected_value
 
     node_features: dict[str, Mapping[int, str]] = {
         "burns_annotations": authoritative,
         **projections,
     }
-
-    base_metadata = {
-        "valueType": "str",
-        "module": "Burns",
-        "moduleSchema": MODULE_SCHEMA,
-        "cucRepository": compatibility["repository"],
-        "cucCommit": compatibility["commit"],
-        "cucVersion": compatibility["version"],
-        "cucManifestSha256": compatibility["manifest_sha256"],
-    }
     metadata = {
-        feature: {**base_metadata, "description": _DESCRIPTIONS[feature]}
+        feature: _expected_feature_metadata(feature)
         for feature in FEATURES
     }
     return BurnsModuleData(
@@ -380,20 +402,34 @@ def _validate_module_for_write(module: BurnsModuleData, report: Mapping[str, obj
         raise ValueError("Burns TF module node-feature inventory is not the reviewed v1 inventory")
     if set(module.metadata) != set(FEATURES):
         raise ValueError("Burns TF module metadata inventory is not the reviewed v1 inventory")
+
     authoritative_nodes = set(module.node_features["burns_annotations"])
+    parsed_by_node: dict[int, tuple[dict[str, object], ...]] = {}
+    for node, value in module.node_features["burns_annotations"].items():
+        parsed_by_node[node] = burns_node_annotations(value)
+
     for feature in FEATURES:
         if set(module.node_features[feature]) != authoritative_nodes:
             raise ValueError(f"Burns projection node coverage differs for {feature}")
-        metadata = module.metadata[feature]
-        if metadata.get("valueType") != "str" or metadata.get("moduleSchema") != MODULE_SCHEMA:
+        if dict(module.metadata[feature]) != _expected_feature_metadata(feature):
             raise ValueError(f"invalid Burns TF metadata for {feature}")
-    for value in module.node_features["burns_annotations"].values():
-        burns_node_annotations(value)
+
+    for node, parsed in parsed_by_node.items():
+        expected_projections = _project_payloads(parsed)
+        for feature, expected_value in expected_projections.items():
+            actual_value = module.node_features[feature][node]
+            if actual_value != expected_value:
+                raise ValueError(
+                    f"Burns projection {feature} differs from authoritative burns_annotations "
+                    f"on node {node}"
+                )
 
     if report.get("schema") != MODULE_REPORT_SCHEMA:
         raise ValueError("refusing to write invalid Burns module report schema")
     if report.get("feature_inventory") != sorted(FEATURES):
         raise ValueError("Burns module report feature inventory does not match module")
+    if report.get("cuc_compatibility") != _reviewed_compatibility_payload():
+        raise ValueError("Burns module report compatibility is not the exact reviewed CUC identity")
 
 
 def _publish(stage: Path, output: Path) -> None:
