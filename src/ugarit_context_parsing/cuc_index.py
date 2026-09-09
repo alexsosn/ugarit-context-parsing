@@ -54,13 +54,14 @@ _REVIEWED_CUC_FILES = {
 REVIEWED_CUC_FILES: Mapping[str, CucFileFingerprint] = MappingProxyType(
     _REVIEWED_CUC_FILES
 )
-REVIEWED_CUC_COUNTS = {
+_REVIEWED_CUC_COUNTS = {
     "sign": 146017,
     "column": 334,
     "line": 7616,
     "tablet": 279,
     "word": 27770,
 }
+REVIEWED_CUC_COUNTS: Mapping[str, int] = MappingProxyType(_REVIEWED_CUC_COUNTS)
 _REVIEWED_SECTION_TYPES = ("tablet", "column", "line")
 _REVIEWED_SECTION_FEATURES = ("tablet", "column", "line")
 
@@ -185,6 +186,13 @@ def _mapping_proxy(values: dict) -> Mapping:
     return MappingProxyType(dict(values))
 
 
+def _normalize_column(value: str) -> str:
+    column = value.strip()
+    if not column:
+        raise CucCompatibilityError("empty CUC column label after whitespace normalization")
+    return column
+
+
 def _build_index_from_snapshot(
     snapshot: CucStructuralSnapshot,
     *,
@@ -233,9 +241,10 @@ def _build_index_from_snapshot(
     for row in sorted(snapshot.columns, key=lambda item: (item.tablet, item.column, item.node)):
         if row.tablet not in tablet_nodes:
             raise CucCompatibilityError(f"column references unknown tablet: {row.tablet!r}")
-        key = (row.tablet, row.column)
+        column = _normalize_column(row.column)
+        key = (row.tablet, column)
         if key in column_nodes:
-            raise CucCompatibilityError(f"duplicate column key: {key!r}")
+            raise CucCompatibilityError(f"duplicate column key after normalization: {key!r}")
         if row.node in column_node_ids:
             raise CucCompatibilityError(f"duplicate column node id: {row.node}")
         column_nodes[key] = row.node
@@ -255,11 +264,12 @@ def _build_index_from_snapshot(
     for row in sorted(snapshot.lines, key=lambda item: item.node):
         if row.tablet not in tablet_nodes:
             raise CucCompatibilityError(f"line references unknown tablet: {row.tablet!r}")
-        if (row.tablet, row.column) not in column_nodes:
+        column = _normalize_column(row.column)
+        if (row.tablet, column) not in column_nodes:
             raise CucCompatibilityError(
-                f"line references unknown column: {(row.tablet, row.column)!r}"
+                f"line references unknown column: {(row.tablet, column)!r}"
             )
-        key = (row.tablet, row.column, row.line)
+        key = (row.tablet, column, row.line)
         if key in line_nodes:
             raise CucCompatibilityError(f"duplicate exact line key: {key!r}")
         if row.node in line_node_ids:
