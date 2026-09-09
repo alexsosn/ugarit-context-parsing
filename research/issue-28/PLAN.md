@@ -25,7 +25,7 @@ No CUC warp/data may be copied into the Burns module.
    - direct supported feature access (`api.Fs('burns_annotations')` / projection values), and
    - an MCP-supported search path (`cfabric_mcp.tools.search`) using a Burns projection constraint on the selected real CUC node type.
 10. Assert the Burns output inventory contains only the six `burns_*.tf` files plus `burns-module-report.json`, with no `otype.tf`, `oslots.tf`, `otext.tf`, or copied CUC features.
-11. Extend the reviewed-CUC workflow to check out/install the exact currently pinned Context-Fabric commit and run this script.
+11. Add a dedicated reviewed-CUC + Context-Fabric workflow (or an equivalent isolated job) that checks out/installs the exact currently pinned Context-Fabric commit and runs this script. Keep the existing Text-Fabric-only reviewed-CUC gate independent.
 12. Freeze the RED commit and preserve CI evidence that the failure is at the current `CorpusManager.load()` single-path boundary.
 
 ## Phase 2 — minimal consumer GREEN
@@ -53,7 +53,7 @@ Use the same #28 researched contract for the coordinated `alexsosn/context-fabri
 
 ## Phase 3 — downstream GREEN
 
-1. Update the immutable Context-Fabric pin in `.github/workflows/test.yml` and the reviewed-CUC composition workflow to the independently reviewed consumer merge commit.
+1. Update the immutable Context-Fabric pin in `.github/workflows/test.yml` and the dedicated reviewed-CUC consumer workflow to the independently reviewed consumer merge commit.
 2. Run the preserved downstream contract unchanged except for the pin/install wiring required to consume the fixed version.
 3. Require exact-head success for:
    - Python 3.10/3.12/3.13 + installed-package checks;
