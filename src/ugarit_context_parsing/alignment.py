@@ -403,6 +403,7 @@ def build_alignment_report(
         records_by_id[record.record_id] = record
 
     entries: list[dict[str, object]] = []
+    claimed_record_ids: set[str] = set()
     ordered_annotations = sorted(
         source.annotations,
         key=lambda item: (item.worksheet_id, item.first_source_row, item.annotation_id),
@@ -421,6 +422,11 @@ def build_alignment_report(
                 raise ValueError(
                     f"annotation {annotation.annotation_id} references missing source record {record_id}"
                 )
+            if record_id in claimed_record_ids:
+                raise ValueError(
+                    f"source record is claimed by more than one annotation: {record_id}"
+                )
+            claimed_record_ids.add(record_id)
             source_records.append(
                 {
                     "record_id": record.record_id,
@@ -454,6 +460,9 @@ def build_alignment_report(
                 ],
             }
         )
+
+    if claimed_record_ids != set(records_by_id):
+        raise ValueError("normalized source records are not exactly partitioned by annotations")
 
     disposition_counts = dict(
         sorted(Counter(item.disposition.value for item in alignments).items())
