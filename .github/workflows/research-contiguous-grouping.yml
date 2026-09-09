@@ -1,0 +1,38 @@
+name: Burns contiguous grouping audit
+
+on:
+  pull_request:
+    paths:
+      - 'research/issue-21/verify_contiguous_grouping.py'
+      - '.github/workflows/research-contiguous-grouping.yml'
+      - 'tests/test_ci_action_pins.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: burns-contiguous-grouping-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out research branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify CI provenance
+        run: python scripts/check_ci_provenance.py
+
+      - name: Install parser runtime
+        run: python -m pip install .
+
+      - name: Verify contiguous Burns grouping
+        run: python research/issue-21/verify_contiguous_grouping.py
+
+      - name: Assert no Burns-derived source persisted
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e Workbooks
+          test ! -e research/issue-21/grouping-stats.json
