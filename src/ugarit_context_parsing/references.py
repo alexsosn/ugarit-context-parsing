@@ -49,6 +49,13 @@ class ParsedBurnsReference:
 
 _ROMAN = r"[IVXLCDM]+"
 _COLUMN_PREFIX_RE = re.compile(rf"^({_ROMAN})\s*\.\s*(.*)$")
+_CANONICAL_ROMAN_RE = re.compile(
+    r"^(?=[IVXLCDM]+$)"
+    r"M{0,3}"
+    r"(?:CM|CD|D?C{0,3})"
+    r"(?:XC|XL|L?X{0,3})"
+    r"(?:IX|IV|V?I{0,3})$"
+)
 _RANGE_RE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
 _LINE_RE = re.compile(r"^\d+$")
 _ALPHA_RE = re.compile(r"[A-Za-z]+")
@@ -188,6 +195,13 @@ def parse_burns_reference(
         prefix = _COLUMN_PREFIX_RE.fullmatch(group)
         if prefix is not None:
             column = prefix.group(1)
+            if _CANONICAL_ROMAN_RE.fullmatch(column) is None:
+                return _reject(
+                    original_ktu,
+                    original_reference,
+                    BurnsReferenceStatus.MALFORMED,
+                    BurnsReferenceReason.MALFORMED_STRUCTURE,
+                )
             group = prefix.group(2).strip()
             if not group:
                 return _reject(
