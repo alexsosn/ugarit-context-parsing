@@ -13,7 +13,7 @@ on:
       - 'src/ugarit_context_parsing/module.py'
       - 'tests/test_cuc_index.py'
       - 'tests/test_burns_alignment.py'
-      - 'tests/test_burns_tf_module.py'
+      - 'tests/test_burns_tf_module*.py'
       - '.github/workflows/test-reviewed-cuc-index.yml'
       - 'scripts/check_ci_provenance.py'
       - 'pyproject.toml'
@@ -89,6 +89,8 @@ jobs:
           assert max(map(len, ambiguous)) == 8
           assert sum(1 for value in index.word_g_cons.values() if value == '') == 528
 
+          # CUC contains incidental raw column whitespace; reviewed lookup keys
+          # must remain canonical without changing cardinality.
           assert all(column == column.strip() for _, column in index.column_nodes)
           assert all(column == column.strip() for _, column, _ in index.line_nodes)
           for nodes in index.bare_line_candidates.values():
@@ -96,6 +98,8 @@ jobs:
           for words in index.line_words.values():
               assert isinstance(words, tuple)
 
+          # Keep a small direct production-aligner check alongside the fuller
+          # feature-module composition test below.
           before = (
               len(index.tablet_nodes),
               len(index.column_nodes),
@@ -159,6 +163,8 @@ jobs:
           cuc = Path('.cuc/tf/0.2.8').resolve()
           index = build_reviewed_cuc_index(cuc)
 
+          # Pick public CUC words dynamically; all committed Burns-side content
+          # in this gate remains synthetic.
           chosen = None
           for (tablet, column, line), line_node in sorted(index.line_nodes.items()):
               words = index.line_words[line_node]
@@ -179,6 +185,8 @@ jobs:
           assert tablet.startswith('KTU ')
           raw_ktu = tablet.removeprefix('KTU ')
           reference = f'{column}.{line}'
+          line_only_headword = 'syntheticunmatchedzzzz'
+          assert line_only_headword not in {index.word_g_cons[word] for word in index.line_words[line_node]}
 
           def record(row, headword, references):
               return WorkbookRecord(
@@ -202,7 +210,8 @@ jobs:
               record(1, g1, reference),
               record(2, g1 + '*', reference),
               record(3, f'{g1} {g2}', reference),
-              record(4, 'synthetic-tablet', ''),
+              record(4, line_only_headword, reference),
+              record(5, 'synthetic-tablet', ''),
           ))
           alignments = align_burns_source(source, index)
           module = build_burns_module(source, alignments, index)
@@ -240,6 +249,8 @@ jobs:
               assert tuple(combined.L.d(index.tablet_nodes[tablet], otype='line')) == tablet_lines
               assert tuple(combined.L.d(line_node, otype='word')) == line_words
 
+              # Two independent annotations select the same first word; the
+              # two-word span overlaps them and remains one reconstructable occurrence.
               first_payloads = burns_node_annotations(combined.F.burns_annotations.v(word1))
               assert len(first_payloads) == 3, first_payloads
               assert len({item['annotation_id'] for item in first_payloads}) == 3
@@ -250,10 +261,20 @@ jobs:
               assert copied_span == span
               assert span[0]['anchor_nodes'] == [word1, word2]
 
+              # An exact line reference with an unmatched synthetic headword
+              # safely remains a line-level structural anchor.
+              line_payloads = burns_node_annotations(combined.F.burns_annotations.v(line_node))
+              assert len(line_payloads) == 1
+              assert line_payloads[0]['anchor_kind'] == 'line'
+              assert line_payloads[0]['anchor_nodes'] == [line_node]
+              assert line_payloads[0]['headword'] == line_only_headword
+
               tablet_payloads = burns_node_annotations(
                   combined.F.burns_annotations.v(index.tablet_nodes[tablet])
               )
               assert len(tablet_payloads) == 1
               assert tablet_payloads[0]['anchor_kind'] == 'tablet'
-              assert report['alignment']['counts']['annotations'] == 4
+              assert report['alignment']['counts']['annotations'] == 5
+              assert report['counts']['records'] == 5
+              assert len(report['source_records']) == 5
           PY
