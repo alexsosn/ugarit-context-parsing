@@ -10,6 +10,7 @@ on:
       - 'tests/test_cuc_index.py'
       - '.github/workflows/test-reviewed-cuc-index.yml'
       - 'scripts/check_ci_provenance.py'
+      - 'pyproject.toml'
 
 permissions:
   contents: read
