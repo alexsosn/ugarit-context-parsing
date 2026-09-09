@@ -1,0 +1,53 @@
+name: Issue 23 reference and CUC research audit
+
+on:
+  pull_request:
+    paths:
+      - 'research/issue-23/audit_reference_shapes_and_cuc.py'
+      - '.github/workflows/research-issue-23-reference-cuc.yml'
+      - 'tests/test_ci_action_pins.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-23-reference-cuc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Burns research branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify CI provenance
+        run: python scripts/check_ci_provenance.py
+
+      - name: Check out reviewed CUC base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: DT-UCPH/cuc
+          ref: ad69400f5446e1c8217af01659c7c10ab00c015b
+          path: .cuc
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install .
+
+      - name: Run aggregate-only research probe
+        run: >-
+          python research/issue-23/audit_reference_shapes_and_cuc.py
+          --cuc-tf .cuc/tf/0.2.8
+
+      - name: Assert no Burns-derived source or CUC copy persisted
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e Workbooks
+          test ! -e output/issue-23
+          test ! -e research/issue-23/latest-stats.json
