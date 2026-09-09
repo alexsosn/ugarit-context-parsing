@@ -20,6 +20,26 @@ def _require_sha(value: Any, label: str) -> str:
     return value
 
 
+def parse_commit_parents(raw_commit: str) -> tuple[str, ...]:
+    """Read ordered parent IDs from raw commit-object headers."""
+
+    parents: list[str] = []
+    saw_tree = False
+    for line in raw_commit.splitlines():
+        if not line:
+            break
+        if line.startswith("tree "):
+            if saw_tree:
+                raise ValueError("commit object contains multiple tree headers")
+            _require_sha(line.removeprefix("tree "), "commit tree")
+            saw_tree = True
+        elif line.startswith("parent "):
+            parents.append(_require_sha(line.removeprefix("parent "), "commit parent"))
+    if not saw_tree:
+        raise ValueError("commit object is missing tree header")
+    return tuple(parents)
+
+
 def validate_provenance(
     *,
     event_name: str,
@@ -103,8 +123,8 @@ def main() -> None:
         raise ValueError("GitHub event payload must be a JSON object")
 
     checked_out_sha = _git("rev-parse", "HEAD")
-    parent_text = _git("show", "-s", "--format=%P", "HEAD")
-    parents = tuple(parent_text.split()) if parent_text else ()
+    raw_commit = _git("cat-file", "-p", "HEAD")
+    parents = parse_commit_parents(raw_commit)
     evidence = validate_provenance(
         event_name=event_name,
         event=event,
