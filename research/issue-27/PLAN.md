@@ -89,6 +89,20 @@ Each selected alignment occurrence becomes one canonical payload:
   "occurrence_id": "...",
   "target_ordinal": 0,
   "record_ids": ["..."],
+  "source_records": [
+    {
+      "record_id": "...",
+      "source_file": "01 Synthetic/Worksheet 1.csv",
+      "source_row": 1,
+      "source_page": 7,
+      "locus": "GP",
+      "room": "1",
+      "point": "p:α",
+      "depth": "d\n2",
+      "disputed": "?",
+      "comments": "synthetic \"quoted\" comment\nline 2"
+    }
+  ],
   "worksheet_id": "...",
   "workbook_number": 1,
   "workbook_label": "...",
@@ -114,7 +128,7 @@ Each selected alignment occurrence becomes one canonical payload:
 }
 ```
 
-The payload is built by joining #26 alignment to the matching #22 annotation ID. It must preserve annotation record IDs and taxonomy verbatim.
+The payload is built by joining #26 alignment to the matching #22 annotation ID. It must preserve annotation record IDs/taxonomy and resolve the ordered member `record_ids` back to #22 `BurnsSourceRecord` objects so row-level source provenance, findspot fields, disputed marker, and comments remain available.
 
 Before emitting payloads, call/reuse #26 report validation so forged/missing/extra alignment objects, source partition errors, and deterministic-resolution mismatches fail closed.
 
@@ -191,16 +205,17 @@ Synthetic normalized source/index/alignment fixtures must exercise:
 4. nested/overlapping spans coexist without overwrite;
 5. duplicate identical input occurrence serialization does not duplicate a node payload;
 6. canonical output is independent of supplied alignment iteration order;
-7. Unicode, newline, quote and punctuation in synthetic annotation fields survive `Fabric.save()` + reload + JSON parse;
-8. projections exactly equal values derived from authoritative payloads;
-9. exact CUC compatibility metadata appears on every feature;
-10. a compatibility-less/mismatched index fails closed;
-11. module/report builder rejects caller-modified alignment/module data;
-12. no `otype.tf`, `oslots.tf`, `otext.tf`, or copied CUC feature is written;
-13. writer rejects unexpected staged `.tf` inventory;
-14. failed TF save leaves previous output intact;
-15. mid-publication failure rolls back to previous complete module/report;
-16. successful replacement removes stale Burns-owned TF files.
+7. Unicode, newline, quote and punctuation in synthetic annotation and row-level source fields survive `Fabric.save()` + reload + JSON parse;
+8. ordered source-record IDs and ordered row-level source provenance/findspot/comments survive;
+9. projections exactly equal values derived from authoritative payloads;
+10. exact CUC compatibility metadata appears on every feature;
+11. a compatibility-less/mismatched index fails closed;
+12. module/report builder rejects caller-modified alignment/module data;
+13. no `otype.tf`, `oslots.tf`, `otext.tf`, or copied CUC feature is written;
+14. writer rejects unexpected staged `.tf` inventory;
+15. failed TF save leaves previous output intact;
+16. mid-publication failure rolls back to previous complete module/report;
+17. successful replacement removes stale Burns-owned TF files.
 
 The preserved RED is valid only if the repository's prior tests remain green and new tests fail at the missing module import seam.
 
@@ -221,7 +236,7 @@ Against exact CUC commit `ad69400f...` and the public fingerprint gate:
 1. build the real reviewed index;
 2. dynamically choose an existing tablet, an exact line with words, and enough adjacent words to create legal synthetic annotations;
 3. construct synthetic normalized Burns source/alignment through production APIs where possible; no Burns-derived strings;
-4. write the module into a temp directory with real `Fabric.save()`;
+4. write the Burns module into a temporary directory with real `Fabric.save()`;
 5. load exact CUC base alone and capture:
    - `maxSlot`;
    - `maxNode`;
