@@ -8,13 +8,12 @@ from scripts.check_ci_provenance import parse_commit_parents, validate_provenanc
 
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
-TEST_WORKFLOW = WORKFLOWS / "test.yml"
 RUN_PATTERN = re.compile(
     r"^\s*run:\s*['\"]?python scripts/check_ci_provenance\.py['\"]?\s*(?:#.*)?$",
     re.MULTILINE,
 )
+CHECKOUT_PATTERN = re.compile(r"actions/checkout@[A-Za-z0-9._/-]+")
 JOB_PATTERN = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
-REQUIRED_JOBS = ("test", "agora-contract", "context-fabric-contract")
 BASE = "1" * 40
 HEAD = "2" * 40
 MERGE = "3" * 40
@@ -22,9 +21,8 @@ OTHER = "4" * 40
 TREE = "5" * 40
 
 
-def _workflow_texts() -> list[str]:
-    paths = sorted((*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")))
-    return [path.read_text(encoding="utf-8") for path in paths]
+def _workflow_paths() -> list[Path]:
+    return sorted((*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")))
 
 
 def _job_blocks(workflow: str) -> dict[str, str]:
@@ -58,21 +56,31 @@ def _pull_request_event() -> dict:
 
 
 class CiProvenanceWorkflowContractTests(unittest.TestCase):
-    def test_every_required_job_definition_invokes_provenance_checker(self):
-        workflow = TEST_WORKFLOW.read_text(encoding="utf-8")
-        jobs = _job_blocks(workflow)
-        self.assertEqual(set(jobs), set(REQUIRED_JOBS))
-        for name in REQUIRED_JOBS:
-            with self.subTest(job=name):
-                self.assertEqual(len(RUN_PATTERN.findall(jobs[name])), 1)
+    def test_every_checkout_job_invokes_provenance_checker_exactly_once(self):
+        checkout_jobs = 0
+        provenance_steps = 0
+        for path in _workflow_paths():
+            jobs = _job_blocks(path.read_text(encoding="utf-8"))
+            for name, block in jobs.items():
+                checkout_count = len(CHECKOUT_PATTERN.findall(block))
+                provenance_count = len(RUN_PATTERN.findall(block))
+                provenance_steps += provenance_count
+                if checkout_count:
+                    checkout_jobs += 1
+                    with self.subTest(workflow=path.name, job=name):
+                        self.assertEqual(provenance_count, 1)
+                else:
+                    with self.subTest(workflow=path.name, job=name):
+                        self.assertEqual(provenance_count, 0)
 
-        total = sum(len(RUN_PATTERN.findall(text)) for text in _workflow_texts())
-        self.assertEqual(total, len(REQUIRED_JOBS))
+        self.assertGreater(checkout_jobs, 0)
+        self.assertEqual(provenance_steps, checkout_jobs)
 
     def test_job_block_parser_keeps_steps_in_their_own_jobs(self):
         workflow = """jobs:
   alpha:
     steps:
+      - uses: actions/checkout@deadbeef
       - name: provenance
         run: python scripts/check_ci_provenance.py
   beta:
@@ -82,7 +90,9 @@ class CiProvenanceWorkflowContractTests(unittest.TestCase):
 """
         jobs = _job_blocks(workflow)
         self.assertEqual(set(jobs), {"alpha", "beta"})
+        self.assertEqual(len(CHECKOUT_PATTERN.findall(jobs["alpha"])), 1)
         self.assertEqual(len(RUN_PATTERN.findall(jobs["alpha"])), 1)
+        self.assertEqual(len(CHECKOUT_PATTERN.findall(jobs["beta"])), 0)
         self.assertEqual(len(RUN_PATTERN.findall(jobs["beta"])), 0)
 
 
