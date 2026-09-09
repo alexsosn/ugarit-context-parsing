@@ -51,7 +51,7 @@ class CiActionPinTests(unittest.TestCase):
             for path in paths
             for ref in _action_refs(path.read_text(encoding="utf-8"))
         )
-        expected = Counter({CHECKOUT: 7, SETUP_PYTHON: 3})
+        expected = Counter({CHECKOUT: 5, SETUP_PYTHON: 3})
         self.assertEqual(actual, expected)
 
 
