@@ -1,0 +1,83 @@
+name: Reviewed CUC index contract
+
+# Integration/adversarial history is recorded in
+# research/issue-23/INTEGRATION_AMENDMENT.md. This workflow is the permanent
+# exact-CUC gate that supersedes the temporary research workflow.
+on:
+  pull_request:
+    paths:
+      - 'src/ugarit_context_parsing/cuc_index.py'
+      - 'tests/test_cuc_index.py'
+      - '.github/workflows/test-reviewed-cuc-index.yml'
+      - 'scripts/check_ci_provenance.py'
+      - 'pyproject.toml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reviewed-cuc-index-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reviewed-cuc-index:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Burns module repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify CI provenance
+        run: python scripts/check_ci_provenance.py
+
+      - name: Check out exact reviewed CUC base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: DT-UCPH/cuc
+          ref: ad69400f5446e1c8217af01659c7c10ab00c015b
+          path: .cuc
+          persist-credentials: false
+
+      - name: Run actions/setup-python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install .
+
+      - name: Build exact reviewed CUC index through public gate
+        run: |
+          python - <<'PY'
+          from ugarit_context_parsing.cuc_index import (
+              REVIEWED_CUC_COMMIT,
+              REVIEWED_CUC_COUNTS,
+              REVIEWED_CUC_MANIFEST_SHA256,
+              build_reviewed_cuc_index,
+          )
+
+          index = build_reviewed_cuc_index('.cuc/tf/0.2.8')
+          assert index.compatibility is not None
+          assert index.compatibility.commit == REVIEWED_CUC_COMMIT
+          assert index.compatibility.manifest_sha256 == REVIEWED_CUC_MANIFEST_SHA256
+          assert len(index.tablet_nodes) == REVIEWED_CUC_COUNTS['tablet'] == 279
+          assert len(index.column_nodes) == REVIEWED_CUC_COUNTS['column'] == 334
+          assert len(index.line_nodes) == REVIEWED_CUC_COUNTS['line'] == 7616
+          assert len(index.word_g_cons) == REVIEWED_CUC_COUNTS['word'] == 27770
+
+          ambiguous = [nodes for nodes in index.bare_line_candidates.values() if len(nodes) > 1]
+          assert len(ambiguous) == 607, len(ambiguous)
+          assert max(map(len, ambiguous)) == 8
+          assert sum(1 for value in index.word_g_cons.values() if value == '') == 528
+
+          # The reviewed CUC contains incidental whitespace in at least one raw
+          # column value. Public lookup keys must be canonical for Burns' Roman
+          # column references, and normalization must not reduce key cardinality.
+          assert all(column == column.strip() for _, column in index.column_nodes)
+          assert all(column == column.strip() for _, column, _ in index.line_nodes)
+
+          for nodes in index.bare_line_candidates.values():
+              assert nodes == tuple(sorted(nodes))
+          for words in index.line_words.values():
+              assert isinstance(words, tuple)
+          PY
