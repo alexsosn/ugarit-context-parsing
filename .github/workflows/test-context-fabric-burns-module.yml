@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: alexsosn/context-fabric
-          ref: f253d56d81b29b1d621d96adef9902eefeaa8151
+          ref: 1c7b55ac8ea8cc3bdcef040399b2078c0a71ad77
           path: .context-fabric
           persist-credentials: false
 
@@ -76,7 +76,7 @@ jobs:
               "python_implementation": platform.python_implementation(),
               "platform": platform.platform(),
               "packages": packages,
-              "context_fabric_commit": "f253d56d81b29b1d621d96adef9902eefeaa8151",
+              "context_fabric_commit": "1c7b55ac8ea8cc3bdcef040399b2078c0a71ad77",
               "cuc_commit": "ad69400f5446e1c8217af01659c7c10ab00c015b",
           }
           canonical = json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
