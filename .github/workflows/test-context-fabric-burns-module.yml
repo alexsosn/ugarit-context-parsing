@@ -38,11 +38,11 @@ jobs:
           path: .cuc
           persist-credentials: false
 
-      - name: Check out pinned Context-Fabric consumer
+      - name: Check out exact Context-Fabric consumer under review
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: alexsosn/context-fabric
-          ref: 3a38ca80e617d872ce1664e0f0740486d0e7e8ac
+          ref: 71b95eb23ab2ca1425855041e426bcda32d9c80a
           path: .context-fabric
           persist-credentials: false
 
@@ -52,10 +52,10 @@ jobs:
           python-version: '3.13'
           cache: pip
 
-      - name: Install producer and pinned consumer
+      - name: Install producer and exact consumer
         run: |
           python -m pip install .
-          python -m pip install .context-fabric/libs/core .context-fabric/libs/mcp
+          python -m pip install .context-fabric/libs/core ".context-fabric/libs/mcp[dev]"
 
       - name: Record consumer execution environment
         run: |
@@ -76,13 +76,16 @@ jobs:
               "python_implementation": platform.python_implementation(),
               "platform": platform.platform(),
               "packages": packages,
-              "context_fabric_commit": "3a38ca80e617d872ce1664e0f0740486d0e7e8ac",
+              "context_fabric_commit": "71b95eb23ab2ca1425855041e426bcda32d9c80a",
               "cuc_commit": "ad69400f5446e1c8217af01659c7c10ab00c015b",
           }
           canonical = json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
           print("execution_environment=" + canonical)
           print("execution_environment_sha256=" + hashlib.sha256(canonical.encode("utf-8")).hexdigest())
           PY
+
+      - name: Run exact consumer multi-location tests
+        run: python -m pytest .context-fabric/libs/mcp/tests/integration/test_multi_location_corpus.py -q
 
       - name: Prove CUC plus feature-only Burns through cfabric-mcp
         run: python scripts/check_context_fabric_burns_module_contract.py .cuc/tf/0.2.8
