@@ -98,6 +98,17 @@ class CucReviewedConstantsTests(unittest.TestCase):
             },
         )
 
+    def test_reviewed_counts_cannot_be_mutated_to_weaken_public_verification(self):
+        self.assertIsInstance(REVIEWED_CUC_COUNTS, MappingProxyType)
+        original = REVIEWED_CUC_COUNTS["tablet"]
+        try:
+            with self.assertRaises(TypeError):
+                REVIEWED_CUC_COUNTS["tablet"] = 0  # type: ignore[index]
+        finally:
+            # Keep RED isolated if the implementation is still a mutable dict.
+            if isinstance(REVIEWED_CUC_COUNTS, dict):
+                REVIEWED_CUC_COUNTS["tablet"] = original
+
     def test_required_file_manifest_is_the_researched_six_file_contract(self):
         expected = {
             "otype.tf": (531, "d3ab2f599b7a1e1029608670c739b8439986a7be092d5d1b5eac5267a2ad554f"),
@@ -171,6 +182,42 @@ class CucPureIndexBuilderTests(unittest.TestCase):
             self.assertIsInstance(mapping, MappingProxyType)
         with self.assertRaises(TypeError):
             index.tablet_nodes["KTU 9.9"] = 999  # type: ignore[index]
+
+    def test_column_keys_strip_incidental_cuc_whitespace(self):
+        data = snapshot(
+            columns=(
+                CucColumnRow(110, "KTU 1.1", " I "),
+                CucColumnRow(111, "KTU 1.1", "II"),
+                CucColumnRow(112, "KTU 1.2", "I"),
+            ),
+            lines=(
+                CucLineRow(200, "KTU 1.1", " I ", 1, (300, 301)),
+                CucLineRow(201, "KTU 1.1", " I ", 2, (302,)),
+                CucLineRow(202, "KTU 1.1", "II", 2, (303, 304)),
+                CucLineRow(203, "KTU 1.2", "I", 1, (305,)),
+            ),
+        )
+        index = self.build(data)
+        self.assertEqual(index.column_nodes[("KTU 1.1", "I")], 110)
+        self.assertNotIn(("KTU 1.1", " I "), index.column_nodes)
+        self.assertEqual(index.line_nodes[("KTU 1.1", "I", 1)], 200)
+
+    def test_whitespace_normalization_cannot_hide_duplicate_columns(self):
+        data = snapshot(
+            columns=(
+                CucColumnRow(110, "KTU 1.1", "I"),
+                CucColumnRow(111, "KTU 1.1", " I "),
+                CucColumnRow(112, "KTU 1.2", "I"),
+            ),
+            lines=(
+                CucLineRow(200, "KTU 1.1", "I", 1, (300, 301)),
+                CucLineRow(201, "KTU 1.1", " I ", 2, (302,)),
+                CucLineRow(202, "KTU 1.1", " I ", 3, (303, 304)),
+                CucLineRow(203, "KTU 1.2", "I", 1, (305,)),
+            ),
+        )
+        with self.assertRaisesRegex(CucCompatibilityError, "duplicate column"):
+            self.build(data)
 
     def test_duplicate_tablet_label_fails_closed(self):
         data = snapshot(
