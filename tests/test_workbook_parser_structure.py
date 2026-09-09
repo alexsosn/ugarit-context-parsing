@@ -87,6 +87,60 @@ class WorkbookParserStructureTests(unittest.TestCase):
         self.assertEqual(rows[0]["headword"], "alpha ( tail)")
         self.assertEqual(rows[1]["root"], "")
 
+    def test_page_boundary_does_not_break_non_actions_wrap(self):
+        rows = self.parse_lines(
+            [
+                (1, cells(A="alpha", B="1")),
+                (2, cells(A="tail")),
+                (2, cells(A="beta", B="2")),
+            ],
+            parent="VII Synthetic Workbook",
+        )
+        self.assertEqual(rows[0]["headword"], "alpha tail")
+        self.assertEqual(rows[1]["root"], "")
+
+    def test_section_banner_clears_actions_root_group(self):
+        rows = self.parse_lines(
+            [
+                (1, cells(A="root-label")),
+                (1, cells(A="form-one", B="1")),
+                (1, cells(A="Section beta")),
+                (1, cells(A="form-two", B="2")),
+            ],
+            parent="IX Synthetic Workbook",
+        )
+        self.assertEqual(rows[0]["root"], "root-label")
+        self.assertEqual(rows[1]["root"], "")
+
+    def test_unknown_workbook_role_fails_closed_on_ambiguous_a_only_line(self):
+        with self.assertRaises(parser.WorkbookStructureError):
+            self.parse_lines(
+                [
+                    (1, cells(A="alpha", B="1")),
+                    (1, cells(A="tail")),
+                    (1, cells(A="beta", B="2")),
+                ],
+                parent="Synthetic Workbook",
+            )
+
+    def test_unknown_workbook_role_accepts_unambiguous_anchor_only_input(self):
+        rows = self.parse_lines(
+            [(1, cells(A="alpha", B="1"))],
+            parent="Synthetic Workbook",
+        )
+        self.assertEqual(rows[0]["headword"], "alpha")
+        self.assertEqual(rows[0]["root"], "")
+
+    def test_workbook_ordinal_accepts_canonical_arabic_and_roman_prefixes(self):
+        self.assertEqual(parser._workbook_ordinal(Path("7 Synthetic/Synthetic.pdf")), 7)
+        self.assertEqual(parser._workbook_ordinal(Path("VII Synthetic/Synthetic.pdf")), 7)
+        self.assertEqual(parser._workbook_ordinal(Path("IX Synthetic/Synthetic.pdf")), 9)
+
+    def test_workbook_ordinal_rejects_unrelated_or_out_of_range_prefixes(self):
+        self.assertIsNone(parser._workbook_ordinal(Path("Synthetic/Synthetic.pdf")))
+        self.assertIsNone(parser._workbook_ordinal(Path("10 Synthetic/Synthetic.pdf")))
+        self.assertIsNone(parser._workbook_ordinal(Path("X Synthetic/Synthetic.pdf")))
+
 
 if __name__ == "__main__":
     unittest.main()
