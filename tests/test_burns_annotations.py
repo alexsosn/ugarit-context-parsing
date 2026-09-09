@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import tempfile
 import unittest
 import unicodedata
@@ -16,7 +17,12 @@ from ugarit_context_parsing.annotations import (
     normalize_workbook_records,
 )
 from ugarit_context_parsing.graph import build_tf_data
-from ugarit_context_parsing.source import WorkbookRecord, WorkbookSource
+from ugarit_context_parsing.source import (
+    WORKBOOK_FIELDS,
+    WorkbookRecord,
+    WorkbookSource,
+    load_csv_directory,
+)
 
 
 WORKBOOK_I = "01 Workbook I - Divine Names (DNs)"
@@ -46,6 +52,28 @@ def _record(**overrides: object) -> WorkbookRecord:
 
 def _normalize(*records: WorkbookRecord):
     return normalize_workbook_records(records)
+
+
+def _write_csv(path: Path, *, headword: str, ktu: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {
+        "source_page": 1,
+        "section": "Section α",
+        "root": "",
+        "headword": headword,
+        "ktu": ktu,
+        "references": "I 1",
+        "locus": "GP",
+        "room": "1",
+        "point": "",
+        "depth": "",
+        "disputed": "n",
+        "comments": "synthetic loader-order control",
+    }
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=WORKBOOK_FIELDS)
+        writer.writeheader()
+        writer.writerow(row)
 
 
 class WorksheetIdentityTests(unittest.TestCase):
@@ -182,8 +210,30 @@ class SourceRecordIdentityTests(unittest.TestCase):
 
     def test_duplicate_logical_row_id_fails_closed(self):
         row = _record()
-        with self.assertRaisesRegex(BurnsNormalizationError, "duplicate.*record", case_sensitive=False):
+        with self.assertRaisesRegex(BurnsNormalizationError, r"(?i)duplicate.*record"):
             _normalize(row, row)
+
+    def test_absolute_roots_and_filesystem_creation_order_do_not_change_ids(self):
+        with tempfile.TemporaryDirectory() as tmp_a, tempfile.TemporaryDirectory() as tmp_b:
+            root_a = Path(tmp_a)
+            root_b = Path(tmp_b)
+            rel_1 = Path(WORKBOOK_I) / "Worksheet 1.csv"
+            rel_2 = Path(WORKBOOK_I) / "Worksheet 2.csv"
+
+            _write_csv(root_a / rel_2, headword="mlk", ktu="1.16")
+            _write_csv(root_a / rel_1, headword="bʿl", ktu="1.14")
+            _write_csv(root_b / rel_1, headword="bʿl", ktu="1.14")
+            _write_csv(root_b / rel_2, headword="mlk", ktu="1.16")
+
+            a = normalize_workbook_records(load_csv_directory(root_a).records)
+            b = normalize_workbook_records(load_csv_directory(root_b).records)
+
+        self.assertEqual([row.worksheet_id for row in a.records], [row.worksheet_id for row in b.records])
+        self.assertEqual([row.record_id for row in a.records], [row.record_id for row in b.records])
+        self.assertEqual(
+            [annotation.annotation_id for annotation in a.annotations],
+            [annotation.annotation_id for annotation in b.annotations],
+        )
 
 
 class SemanticAnnotationGroupingTests(unittest.TestCase):
@@ -259,13 +309,16 @@ class SemanticAnnotationGroupingTests(unittest.TestCase):
             for row in csv_rows
         )
 
-        csv = _normalize(*csv_rows)
-        pdf = _normalize(*pdf_rows)
+        csv_source = _normalize(*csv_rows)
+        pdf_source = _normalize(*pdf_rows)
 
-        self.assertEqual([row.record_id for row in csv.records], [row.record_id for row in pdf.records])
         self.assertEqual(
-            [annotation.annotation_id for annotation in csv.annotations],
-            [annotation.annotation_id for annotation in pdf.annotations],
+            [row.record_id for row in csv_source.records],
+            [row.record_id for row in pdf_source.records],
+        )
+        self.assertEqual(
+            [annotation.annotation_id for annotation in csv_source.annotations],
+            [annotation.annotation_id for annotation in pdf_source.annotations],
         )
 
 
