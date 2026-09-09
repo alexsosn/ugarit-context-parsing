@@ -46,6 +46,9 @@ jobs:
       - name: Run source-safe reference grammar probe
         run: python research/issue-21/analyze_reference_grammar.py
 
+      - name: Separate positive Burns alignments from excluded evidence
+        run: python research/issue-21/analyze_semantic_dispositions.py .cuc/tf/0.2.8
+
       - name: Assert no Burns-derived research artifact was persisted
         shell: bash
         run: |
