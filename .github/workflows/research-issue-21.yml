@@ -43,6 +43,9 @@ jobs:
           python research/issue-21/analyze_real_source.py
           --cuc-tf .cuc/tf/0.2.8
 
+      - name: Run source-safe reference grammar probe
+        run: python research/issue-21/analyze_reference_grammar.py
+
       - name: Assert no Burns-derived research artifact was persisted
         shell: bash
         run: |
