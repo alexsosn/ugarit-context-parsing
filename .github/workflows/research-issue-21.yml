@@ -1,0 +1,49 @@
+name: Issue 21 real-source research
+
+on:
+  pull_request:
+    paths:
+      - 'research/issue-21/**'
+      - '.github/workflows/research-issue-21.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-21-research-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  aggregate-alignment-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Burns parser/materializer research branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out reviewed CUC base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: DT-UCPH/cuc
+          ref: ad69400f5446e1c8217af01659c7c10ab00c015b
+          path: .cuc
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install parser and Text-Fabric runtime
+        run: python -m pip install .
+
+      - name: Run aggregate-only real-source probe
+        run: >-
+          python research/issue-21/analyze_real_source.py
+          --cuc-tf .cuc/tf/0.2.8
+
+      - name: Assert no Burns-derived research artifact was persisted
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e Workbooks
+          test ! -e output/issue-21
+          test ! -e research/issue-21/latest-stats.json
