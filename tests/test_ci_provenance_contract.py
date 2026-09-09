@@ -4,7 +4,7 @@ import re
 import unittest
 from pathlib import Path
 
-from scripts.check_ci_provenance import validate_provenance
+from scripts.check_ci_provenance import parse_commit_parents, validate_provenance
 
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
@@ -19,6 +19,7 @@ BASE = "1" * 40
 HEAD = "2" * 40
 MERGE = "3" * 40
 OTHER = "4" * 40
+TREE = "5" * 40
 
 
 def _workflow_texts() -> list[str]:
@@ -81,6 +82,31 @@ class CiProvenanceWorkflowContractTests(unittest.TestCase):
         self.assertEqual(set(jobs), {"alpha", "beta"})
         self.assertEqual(len(RUN_PATTERN.findall(jobs["alpha"])), 1)
         self.assertEqual(len(RUN_PATTERN.findall(jobs["beta"])), 0)
+
+
+class CommitObjectParserTests(unittest.TestCase):
+    def test_reads_ordered_parents_from_raw_merge_commit(self):
+        raw = (
+            f"tree {TREE}\n"
+            f"parent {BASE}\n"
+            f"parent {HEAD}\n"
+            "author Example <example@example.com> 0 +0000\n"
+            "committer Example <example@example.com> 0 +0000\n"
+            "\nMerge\n"
+        )
+        self.assertEqual(parse_commit_parents(raw), (BASE, HEAD))
+
+    def test_reads_parent_even_when_parent_object_need_not_be_available(self):
+        raw = f"tree {TREE}\nparent {BASE}\n\nmessage\n"
+        self.assertEqual(parse_commit_parents(raw), (BASE,))
+
+    def test_rejects_missing_tree_header(self):
+        with self.assertRaisesRegex(ValueError, "missing tree"):
+            parse_commit_parents(f"parent {BASE}\n\nmessage\n")
+
+    def test_rejects_malformed_parent_header(self):
+        with self.assertRaisesRegex(ValueError, "commit parent"):
+            parse_commit_parents(f"tree {TREE}\nparent not-a-sha\n\nmessage\n")
 
 
 class CiProvenanceValidatorTests(unittest.TestCase):
