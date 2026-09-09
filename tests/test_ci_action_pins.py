@@ -51,7 +51,9 @@ class CiActionPinTests(unittest.TestCase):
             for path in paths
             for ref in _action_refs(path.read_text(encoding="utf-8"))
         )
-        expected = Counter({CHECKOUT: 5, SETUP_PYTHON: 3})
+        # The issue-21 real-source research workflow intentionally adds two
+        # checkouts (this repo + reviewed CUC) and one setup-python invocation.
+        expected = Counter({CHECKOUT: 7, SETUP_PYTHON: 4})
         self.assertEqual(actual, expected)
 
 
