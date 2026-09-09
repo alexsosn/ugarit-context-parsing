@@ -209,6 +209,37 @@ class AlignmentReportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_alignment_report(broken_source, self.alignments, self.index)
 
+    def test_unreferenced_source_record_fails_closed(self):
+        extra_record = replace(
+            self.source.records[0],
+            record_id="burns-record-sha256:unreferenced",
+            source_row=99,
+        )
+        broken_source = replace(self.source, records=(*self.source.records, extra_record))
+        with self.assertRaises(ValueError):
+            build_alignment_report(broken_source, self.alignments, self.index)
+
+    def test_one_source_record_cannot_be_claimed_by_two_annotations(self):
+        shared_record_id = self.source.records[0].record_id
+        changed_annotation = replace(
+            self.source.annotations[1],
+            record_ids=(shared_record_id,),
+        )
+        broken_source = replace(
+            self.source,
+            annotations=(self.source.annotations[0], changed_annotation),
+        )
+        changed_alignment = replace(
+            self.alignments[1],
+            record_ids=(shared_record_id,),
+        )
+        with self.assertRaises(ValueError):
+            build_alignment_report(
+                broken_source,
+                (self.alignments[0], changed_alignment),
+                self.index,
+            )
+
     def test_alignment_entries_sort_by_source_semantics_not_input_alignment_order(self):
         report = build_alignment_report(self.source, tuple(reversed(self.alignments)), self.index)
         self.assertEqual(
