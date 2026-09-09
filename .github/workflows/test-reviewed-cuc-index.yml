@@ -1,5 +1,8 @@
 name: Reviewed CUC index contract
 
+# Integration/adversarial history is recorded in
+# research/issue-23/INTEGRATION_AMENDMENT.md. This workflow is the permanent
+# exact-CUC gate that supersedes the temporary research workflow.
 on:
   pull_request:
     paths:
