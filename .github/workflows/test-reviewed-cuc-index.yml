@@ -10,8 +10,10 @@ on:
       - 'src/ugarit_context_parsing/alignment.py'
       - 'src/ugarit_context_parsing/annotations.py'
       - 'src/ugarit_context_parsing/references.py'
+      - 'src/ugarit_context_parsing/module.py'
       - 'tests/test_cuc_index.py'
       - 'tests/test_burns_alignment.py'
+      - 'tests/test_burns_tf_module.py'
       - '.github/workflows/test-reviewed-cuc-index.yml'
       - 'scripts/check_ci_provenance.py'
       - 'pyproject.toml'
@@ -138,4 +140,132 @@ jobs:
               len(index.line_nodes),
               len(index.word_g_cons),
           )
+          PY
+
+      - name: Write and combine feature-only Burns module
+        run: |
+          python - <<'PY'
+          import tempfile
+          from pathlib import Path
+
+          from tf.fabric import Fabric
+
+          from ugarit_context_parsing.alignment import align_burns_source
+          from ugarit_context_parsing.annotations import normalize_workbook_records
+          from ugarit_context_parsing.cuc_index import build_reviewed_cuc_index
+          from ugarit_context_parsing.module import (
+              FEATURES,
+              REPORT_FILE,
+              build_burns_module,
+              build_burns_module_report,
+              burns_node_annotations,
+              write_burns_module,
+          )
+          from ugarit_context_parsing.source import WorkbookRecord
+
+          cuc = Path('.cuc/tf/0.2.8')
+          index = build_reviewed_cuc_index(cuc)
+
+          # Choose a real reviewed-CUC line whose first two words can form a
+          # legal exact synthetic Burns headword. The strings come from the
+          # public CUC base, not the restricted Burns source.
+          chosen = None
+          for (tablet, column, line), line_node in sorted(index.line_nodes.items()):
+              words = index.line_words[line_node]
+              if len(words) < 2:
+                  continue
+              first = index.word_g_cons[words[0]]
+              second = index.word_g_cons[words[1]]
+              if not first or not second:
+                  continue
+              if any(character.isspace() for character in first + second):
+                  continue
+              if first.endswith(('*', '†', '!', '?')):
+                  continue
+              chosen = (tablet, column, line, line_node, words[0], words[1], first, second)
+              break
+          assert chosen is not None
+          tablet, column, line, line_node, word1, word2, g1, g2 = chosen
+          assert tablet.startswith('KTU ')
+          raw_ktu = tablet.removeprefix('KTU ')
+          reference = f'{column}.{line}'
+
+          def record(row, headword, references):
+              return WorkbookRecord(
+                  source_file='01 Synthetic/Worksheet 1.csv',
+                  source_row=row,
+                  source_page=row,
+                  section='Section α',
+                  root='',
+                  headword=headword,
+                  ktu=raw_ktu,
+                  references=references,
+                  locus='SYN',
+                  room=str(row),
+                  point=f'p{row}',
+                  depth='synthetic',
+                  disputed='',
+                  comments=f'synthetic reviewed-CUC contract row {row}',
+              )
+
+          source = normalize_workbook_records((
+              record(1, g1, reference),
+              record(2, g1 + '*', reference),
+              record(3, f'{g1} {g2}', reference),
+              record(4, 'synthetic-tablet', ''),
+          ))
+          alignments = align_burns_source(source, index)
+          module = build_burns_module(source, alignments, index)
+          report = build_burns_module_report(source, alignments, index, module)
+
+          base = Fabric(locations=[str(cuc)], modules=[''], silent='deep').loadAll(silent='deep')
+          assert base is not None
+          max_slot = base.F.otype.maxSlot
+          max_node = base.F.otype.maxNode
+          type_vector = tuple(base.F.otype.v(node) for node in range(1, max_node + 1))
+          tablet_lines = tuple(base.L.d(index.tablet_nodes[tablet], otype='line'))
+          line_words = tuple(base.L.d(line_node, otype='word'))
+
+          with tempfile.TemporaryDirectory() as tmp:
+              output = Path(tmp) / 'burns-module'
+              assert write_burns_module(module, report, output)
+              expected_files = {f'{feature}.tf' for feature in FEATURES} | {REPORT_FILE}
+              assert {path.name for path in output.iterdir() if path.is_file()} == expected_files
+              assert not (output / 'otype.tf').exists()
+              assert not (output / 'oslots.tf').exists()
+              for copied in ('g_cons.tf', 'tablet.tf', 'column.tf', 'line.tf'):
+                  assert not (output / copied).exists(), copied
+
+              combined = Fabric(
+                  locations=[str(cuc), str(output)],
+                  modules=[''],
+                  silent='deep',
+              ).loadAll(silent='deep')
+              assert combined is not None
+              assert combined.F.otype.maxSlot == max_slot
+              assert combined.F.otype.maxNode == max_node
+              assert tuple(
+                  combined.F.otype.v(node) for node in range(1, max_node + 1)
+              ) == type_vector
+              assert tuple(combined.L.d(index.tablet_nodes[tablet], otype='line')) == tablet_lines
+              assert tuple(combined.L.d(line_node, otype='word')) == line_words
+
+              # Two independent annotations select the same first word and the
+              # two-word annotation overlaps it. All survive module composition.
+              first_payloads = burns_node_annotations(combined.F.burns_annotations.v(word1))
+              assert len(first_payloads) == 3, first_payloads
+              assert len({item['annotation_id'] for item in first_payloads}) == 3
+              span = [item for item in first_payloads if item['anchor_nodes'] == [word1, word2]]
+              assert len(span) == 1
+              second_payloads = burns_node_annotations(combined.F.burns_annotations.v(word2))
+              copied_span = [item for item in second_payloads if item['occurrence_id'] == span[0]['occurrence_id']]
+              assert copied_span == span
+              assert span[0]['anchor_nodes'] == [word1, word2]
+
+              tablet_payloads = burns_node_annotations(
+                  combined.F.burns_annotations.v(index.tablet_nodes[tablet])
+              )
+              assert len(tablet_payloads) == 1
+              assert tablet_payloads[0]['anchor_kind'] == 'tablet'
+              assert report['alignment']['counts']['annotations'] == 4
           PY
