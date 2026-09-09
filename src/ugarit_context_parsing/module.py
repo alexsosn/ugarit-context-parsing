@@ -112,12 +112,25 @@ def _record_payload(record: BurnsSourceRecord) -> dict[str, object]:
         "source_file": record.source_file,
         "source_row": record.source_row,
         "source_page": record.source_page,
+        "section": record.section,
+        "root": record.root,
+        "headword": record.headword,
+        "ktu": record.ktu,
+        "references": record.references,
         "locus": record.locus,
         "room": record.room,
         "point": record.point,
         "depth": record.depth,
         "disputed": record.disputed,
         "comments": record.comments,
+        "worksheet_id": record.worksheet_id,
+        "workbook_number": record.workbook_number,
+        "workbook_label": record.workbook_label,
+        "worksheet_number": record.worksheet_number,
+        "worksheet_role": record.worksheet_role.value,
+        "textual_status": record.textual_status.value,
+        "semantic_status": record.semantic_status.value,
+        "interpretive_status": record.interpretive_status.value,
     }
 
 
@@ -180,7 +193,7 @@ def _occurrence_payload(
 
 def _payload_identity(payload: Mapping[str, object]) -> tuple[object, ...]:
     anchor_nodes = payload.get("anchor_nodes")
-    if not isinstance(anchor_nodes, list) or not all(isinstance(node, int) for node in anchor_nodes):
+    if not isinstance(anchor_nodes, list) or not all(type(node) is int for node in anchor_nodes):
         raise ValueError("Burns node annotation has invalid anchor_nodes")
     return (
         payload.get("annotation_id"),
@@ -371,6 +384,13 @@ def build_burns_module_report(
     anchor_kind_counts = dict(
         sorted(Counter(occurrence.anchor_kind.value for occurrence in selected_occurrences).items())
     )
+    source_records = [
+        _record_payload(record)
+        for record in sorted(
+            source.records,
+            key=lambda item: (item.worksheet_id, item.source_row, item.record_id),
+        )
+    ]
     return {
         "schema": MODULE_REPORT_SCHEMA,
         "cuc_compatibility": compatibility,
@@ -383,6 +403,7 @@ def build_burns_module_report(
             "touched_nodes": len(module.node_features["burns_annotations"]),
         },
         "feature_inventory": sorted(FEATURES),
+        "source_records": source_records,
         "alignment": alignment_report,
     }
 
@@ -397,6 +418,123 @@ def _make_fabric(factory: Callable[..., _FabricLike] | None) -> _FabricLike:
     return factory(locations=[], modules=[], silent="deep")
 
 
+def _validate_authoritative_placement(
+    parsed_by_node: Mapping[int, tuple[dict[str, object], ...]],
+) -> dict[tuple[str, str], tuple[str, tuple[int, ...], str, set[int]]]:
+    occurrences: dict[tuple[str, str], tuple[str, tuple[int, ...], str, set[int]]] = {}
+    for node, payloads in parsed_by_node.items():
+        if type(node) is not int or node <= 0:
+            raise ValueError("Burns authoritative placement uses a non-positive node id")
+        for payload in payloads:
+            annotation_id = payload.get("annotation_id")
+            occurrence_id = payload.get("occurrence_id")
+            if not isinstance(annotation_id, str) or not annotation_id:
+                raise ValueError("Burns node payload has invalid annotation identity")
+            if not isinstance(occurrence_id, str) or not occurrence_id:
+                raise ValueError("Burns node payload has invalid occurrence identity")
+
+            anchor_kind = payload.get("anchor_kind")
+            if anchor_kind not in {"tablet", "line", "word_span"}:
+                raise ValueError("Burns node payload has invalid anchor kind")
+            raw_anchor_nodes = payload.get("anchor_nodes")
+            if not isinstance(raw_anchor_nodes, list) or not raw_anchor_nodes:
+                raise ValueError("Burns node payload has empty or invalid anchor placement")
+            if not all(type(anchor) is int and anchor > 0 for anchor in raw_anchor_nodes):
+                raise ValueError("Burns node payload has invalid anchor placement")
+            anchor_nodes = tuple(raw_anchor_nodes)
+            if len(set(anchor_nodes)) != len(anchor_nodes):
+                raise ValueError("Burns node payload has duplicate anchor placement")
+            if anchor_kind in {"tablet", "line"} and len(anchor_nodes) != 1:
+                raise ValueError("Burns structural anchor must have exactly one node")
+            if node not in anchor_nodes:
+                raise ValueError("Burns payload placement is outside its declared anchor nodes")
+
+            key = (annotation_id, occurrence_id)
+            canonical = _canonical_json(payload)
+            existing = occurrences.get(key)
+            if existing is None:
+                occurrences[key] = (canonical, anchor_nodes, str(anchor_kind), {node})
+                continue
+            previous_canonical, previous_anchors, previous_kind, carriers = existing
+            if previous_canonical != canonical:
+                raise ValueError("Burns occurrence copies with one identity contain divergent payloads")
+            if previous_anchors != anchor_nodes or previous_kind != anchor_kind:
+                raise ValueError("Burns occurrence identity has conflicting anchor payload")
+            carriers.add(node)
+
+    for _, (_, anchor_nodes, _, carriers) in occurrences.items():
+        if carriers != set(anchor_nodes):
+            raise ValueError("Burns occurrence does not have a complete copy on every anchor placement")
+    return occurrences
+
+
+def _validate_report_for_write(
+    report: Mapping[str, object],
+    *,
+    authoritative_nodes: set[int],
+    occurrences: Mapping[tuple[str, str], tuple[str, tuple[int, ...], str, set[int]]],
+) -> None:
+    if report.get("schema") != MODULE_REPORT_SCHEMA:
+        raise ValueError("refusing to write invalid Burns module report schema")
+    if report.get("feature_inventory") != sorted(FEATURES):
+        raise ValueError("Burns module report feature inventory does not match module")
+    if report.get("cuc_compatibility") != _reviewed_compatibility_payload():
+        raise ValueError("Burns module report compatibility is not the exact reviewed CUC identity")
+
+    source_records = report.get("source_records")
+    if not isinstance(source_records, list):
+        raise ValueError("Burns module report source_records inventory is missing or invalid")
+    source_ids: list[str] = []
+    for row in source_records:
+        if not isinstance(row, dict):
+            raise ValueError("Burns module report source_records members must be objects")
+        record_id = row.get("record_id")
+        if not isinstance(record_id, str) or not record_id:
+            raise ValueError("Burns module report source record has invalid identity")
+        source_ids.append(record_id)
+    if len(source_ids) != len(set(source_ids)):
+        raise ValueError("Burns module report contains duplicate source record identities")
+
+    counts = report.get("counts")
+    if not isinstance(counts, Mapping):
+        raise ValueError("Burns module report counts are missing or invalid")
+    if counts.get("records") != len(source_ids):
+        raise ValueError("Burns module report source-record count is inconsistent")
+    if counts.get("touched_nodes") != len(authoritative_nodes):
+        raise ValueError("Burns module report touched-node count is inconsistent")
+    if counts.get("selected_occurrences") != len(occurrences):
+        raise ValueError("Burns module report selected-occurrence count is inconsistent")
+    anchor_counts = dict(
+        sorted(Counter(item[2] for item in occurrences.values()).items())
+    )
+    if counts.get("anchor_kinds") != anchor_counts:
+        raise ValueError("Burns module report anchor-kind counts are inconsistent")
+
+    alignment = report.get("alignment")
+    if not isinstance(alignment, Mapping):
+        raise ValueError("Burns module report embedded alignment report is missing")
+    if alignment.get("schema") != "burns-cuc-alignment-report-v1":
+        raise ValueError("Burns module report embedded alignment schema is invalid")
+    if alignment.get("cuc_compatibility") != _reviewed_compatibility_payload():
+        raise ValueError("Burns module report embedded alignment compatibility is invalid")
+    alignment_counts = alignment.get("counts")
+    if not isinstance(alignment_counts, Mapping) or alignment_counts.get("records") != len(source_ids):
+        raise ValueError("Burns module report embedded alignment record count is inconsistent")
+    annotations = alignment.get("annotations")
+    if not isinstance(annotations, list):
+        raise ValueError("Burns module report embedded alignment annotations are invalid")
+    claimed_ids: list[str] = []
+    for annotation in annotations:
+        if not isinstance(annotation, dict):
+            raise ValueError("Burns module report alignment annotation is invalid")
+        record_ids = annotation.get("record_ids")
+        if not isinstance(record_ids, list) or not all(isinstance(item, str) for item in record_ids):
+            raise ValueError("Burns module report alignment record provenance is invalid")
+        claimed_ids.extend(record_ids)
+    if len(claimed_ids) != len(set(claimed_ids)) or set(claimed_ids) != set(source_ids):
+        raise ValueError("Burns module report source records are not exactly partitioned by annotations")
+
+
 def _validate_module_for_write(module: BurnsModuleData, report: Mapping[str, object]) -> None:
     if set(module.node_features) != set(FEATURES):
         raise ValueError("Burns TF module node-feature inventory is not the reviewed v1 inventory")
@@ -407,6 +545,8 @@ def _validate_module_for_write(module: BurnsModuleData, report: Mapping[str, obj
     parsed_by_node: dict[int, tuple[dict[str, object], ...]] = {}
     for node, value in module.node_features["burns_annotations"].items():
         parsed_by_node[node] = burns_node_annotations(value)
+
+    occurrences = _validate_authoritative_placement(parsed_by_node)
 
     for feature in FEATURES:
         if set(module.node_features[feature]) != authoritative_nodes:
@@ -424,12 +564,11 @@ def _validate_module_for_write(module: BurnsModuleData, report: Mapping[str, obj
                     f"on node {node}"
                 )
 
-    if report.get("schema") != MODULE_REPORT_SCHEMA:
-        raise ValueError("refusing to write invalid Burns module report schema")
-    if report.get("feature_inventory") != sorted(FEATURES):
-        raise ValueError("Burns module report feature inventory does not match module")
-    if report.get("cuc_compatibility") != _reviewed_compatibility_payload():
-        raise ValueError("Burns module report compatibility is not the exact reviewed CUC identity")
+    _validate_report_for_write(
+        report,
+        authoritative_nodes=authoritative_nodes,
+        occurrences=occurrences,
+    )
 
 
 def _publish(stage: Path, output: Path) -> None:
