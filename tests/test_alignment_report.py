@@ -240,6 +240,22 @@ class AlignmentReportTests(unittest.TestCase):
                 self.index,
             )
 
+    def test_modified_selected_anchor_cannot_be_serialized_as_authoritative(self):
+        changed_occurrence = replace(
+            self.alignments[0].occurrences[0],
+            anchor_nodes=(999999,),
+        )
+        changed_alignment = replace(
+            self.alignments[0],
+            occurrences=(changed_occurrence,),
+        )
+        with self.assertRaises(ValueError):
+            build_alignment_report(
+                self.source,
+                (changed_alignment, self.alignments[1]),
+                self.index,
+            )
+
     def test_alignment_entries_sort_by_source_semantics_not_input_alignment_order(self):
         report = build_alignment_report(self.source, tuple(reversed(self.alignments)), self.index)
         self.assertEqual(
