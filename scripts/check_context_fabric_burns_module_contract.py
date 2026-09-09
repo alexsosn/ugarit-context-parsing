@@ -4,22 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import tempfile
 from collections import Counter
 from pathlib import Path
 
 from ugarit_context_parsing.alignment import BurnsAnchorKind, align_burns_source
 from ugarit_context_parsing.annotations import normalize_workbook_records
+from ugarit_context_parsing.cli import main as cli_main
 from ugarit_context_parsing.cuc_index import build_reviewed_cuc_index
-from ugarit_context_parsing.module import (
-    FEATURES,
-    REPORT_FILE,
-    build_burns_module,
-    build_burns_module_report,
-    burns_node_annotations,
-    write_burns_module,
-)
-from ugarit_context_parsing.source import WorkbookRecord
+from ugarit_context_parsing.module import FEATURES, REPORT_FILE, burns_node_annotations
+from ugarit_context_parsing.source import WORKBOOK_FIELDS, WorkbookRecord
 
 
 def _choose_unique_word(index):
@@ -38,10 +33,10 @@ def _choose_unique_word(index):
     raise AssertionError("reviewed CUC has no suitable unique synthetic-contract word")
 
 
-def _synthetic_source(*, tablet: str, column: str, line: int, headword: str):
+def _synthetic_record(*, tablet: str, column: str, line: int, headword: str) -> WorkbookRecord:
     if not tablet.startswith("KTU "):
         raise AssertionError(f"unexpected reviewed CUC tablet label: {tablet!r}")
-    record = WorkbookRecord(
+    return WorkbookRecord(
         source_file="01 Synthetic/Worksheet 1.csv",
         source_row=1,
         source_page=1,
@@ -57,7 +52,19 @@ def _synthetic_source(*, tablet: str, column: str, line: int, headword: str):
         disputed="",
         comments="synthetic Context-Fabric module composition contract",
     )
-    return normalize_workbook_records((record,))
+
+
+def _write_synthetic_csv(root: Path, record: WorkbookRecord) -> None:
+    path = root / record.source_file
+    path.parent.mkdir(parents=True)
+    row = {
+        field: str(getattr(record, field))
+        for field in WORKBOOK_FIELDS
+    }
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=WORKBOOK_FIELDS)
+        writer.writeheader()
+        writer.writerow(row)
 
 
 def _type_counts(info) -> dict[str, int]:
@@ -84,16 +91,17 @@ def run_contract(cuc_dir: str | Path) -> None:
     cuc = Path(cuc_dir).resolve()
     index = build_reviewed_cuc_index(cuc)
     tablet, column, line, line_node, word_node, headword = _choose_unique_word(index)
-    source = _synthetic_source(
+    record = _synthetic_record(
         tablet=tablet,
         column=column,
         line=line,
         headword=headword,
     )
-    alignments = align_burns_source(source, index)
-    if len(alignments) != 1 or len(alignments[0].occurrences) != 1:
+    expected_source = normalize_workbook_records((record,))
+    expected_alignments = align_burns_source(expected_source, index)
+    if len(expected_alignments) != 1 or len(expected_alignments[0].occurrences) != 1:
         raise AssertionError("synthetic Burns source did not produce exactly one occurrence")
-    occurrence = alignments[0].occurrences[0]
+    occurrence = expected_alignments[0].occurrences[0]
     if occurrence.anchor_kind is not BurnsAnchorKind.WORD_SPAN:
         raise AssertionError(f"expected unique word-span anchor, got {occurrence.anchor_kind!r}")
     if occurrence.anchor_nodes != (word_node,):
@@ -101,13 +109,28 @@ def run_contract(cuc_dir: str | Path) -> None:
             f"alignment selected {occurrence.anchor_nodes!r}, expected public CUC word {(word_node,)!r}"
         )
 
-    module = build_burns_module(source, alignments, index)
-    report = build_burns_module_report(source, alignments, index, module)
-
     with tempfile.TemporaryDirectory() as tmp:
-        output = Path(tmp) / "burns-module"
-        if not write_burns_module(module, report, output):
-            raise AssertionError("Text-Fabric refused to write the synthetic Burns module")
+        tmp_root = Path(tmp)
+        source_root = tmp_root / "burns-source"
+        output = tmp_root / "burns-module"
+        _write_synthetic_csv(source_root, record)
+
+        # #43 boundary: materialize through the installed public CLI, not by
+        # calling the module builder/writer directly from this integration gate.
+        result = cli_main(
+            [
+                "module",
+                str(source_root),
+                "--input-format",
+                "csv",
+                "--cuc",
+                str(cuc),
+                "--output",
+                str(output),
+            ]
+        )
+        if result != 0:
+            raise AssertionError(f"public Burns module CLI returned {result!r}")
         _assert_feature_only_inventory(output)
 
         # Establish the exact base structure through the same public MCP manager.
@@ -150,27 +173,30 @@ def run_contract(cuc_dir: str | Path) -> None:
         if not raw:
             raise AssertionError("composed API cannot access Burns annotations on selected CUC word")
         payloads = burns_node_annotations(raw)
-        if len(payloads) != 1 or payloads[0]["annotation_id"] != source.annotations[0].annotation_id:
+        if (
+            len(payloads) != 1
+            or payloads[0]["annotation_id"] != expected_source.annotations[0].annotation_id
+        ):
             raise AssertionError("composed Burns payload does not match the synthetic source")
         if payloads[0]["anchor_nodes"] != [word_node]:
             raise AssertionError("composed Burns payload lost its exact CUC word anchor")
 
         # Exercise the actual MCP tool layer, not only the underlying API.
-        result = tools.search(
+        search_result = tools.search(
             "word burns_annotations~burns-node-annotation-v1",
             corpus="cuc-with-burns",
             limit=20,
         )
-        if "error" in result:
-            raise AssertionError(f"MCP Burns-feature search failed: {result!r}")
+        if "error" in search_result:
+            raise AssertionError(f"MCP Burns-feature search failed: {search_result!r}")
         returned_nodes = {
             int(node["node"])
-            for row in result.get("results", [])
+            for row in search_result.get("results", [])
             for node in row
         }
         if word_node not in returned_nodes:
             raise AssertionError(
-                f"MCP Burns-feature search did not return selected CUC word {word_node}: {result!r}"
+                f"MCP Burns-feature search did not return selected CUC word {word_node}: {search_result!r}"
             )
 
 
