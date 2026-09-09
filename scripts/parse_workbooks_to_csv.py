@@ -89,6 +89,35 @@ LINE_Y_TOL = 6.0      # words within this vertical distance form one visual line
 COL_PAD = 3.0         # x slack when snapping a word to a column
 HEADER_BAND_TOP = 145  # everything above this y is page title / page number
 
+_ROMAN_WORKBOOKS = {
+    "I": 1,
+    "II": 2,
+    "III": 3,
+    "IV": 4,
+    "V": 5,
+    "VI": 6,
+    "VII": 7,
+    "VIII": 8,
+    "IX": 9,
+}
+_WORKBOOK_PREFIX_RE = re.compile(r"^\s*(?:(\d+)|([IVX]+))\b", re.IGNORECASE)
+
+
+class WorkbookStructureError(ValueError):
+    """Raised when source structure is ambiguous and cannot be guessed safely."""
+
+
+def _workbook_ordinal(path: Path) -> int | None:
+    """Return canonical workbook ordinal 1..9 from the parent directory prefix."""
+    match = _WORKBOOK_PREFIX_RE.match(path.parent.name)
+    if match is None:
+        return None
+    if match.group(1) is not None:
+        value = int(match.group(1))
+    else:
+        value = _ROMAN_WORKBOOKS.get(match.group(2).upper())
+    return value if value is not None and 1 <= value <= 9 else None
+
 
 # --------------------------------------------------------------------------- #
 # Ugaritic transliteration repair
@@ -338,6 +367,7 @@ def parse_pdf(path: Path) -> list[dict[str, str]]:
     have_group = False        # has any KTU/headword group started yet?
     last_row: Row | None = None
     prev_kind = ""            # ANCHOR_A | ANCHOR | WRAP | ROOT | CONT | SECTION
+    workbook_ordinal = _workbook_ordinal(path)
 
     with pdfplumber.open(str(path)) as pdf:
         lines = _content_lines(pdf, file_bounds(pdf))
@@ -345,7 +375,6 @@ def parse_pdf(path: Path) -> list[dict[str, str]]:
     for i, (page_no, cells) in enumerate(lines):
         A, B, C = cells["A"], cells["B"], cells["C"]
         D, E, F, G, H, I = (cells[c] for c in "DEFGHI")
-        has_locus = any((D, E, F, G, H))
 
         # Section banner (e.g. "Section α") — updates state, not a row. A new
         # section starts a fresh root grouping.
@@ -390,17 +419,11 @@ def parse_pdf(path: Path) -> list[dict[str, str]]:
             prev_kind = "ANCHOR_A" if new_headword else "ANCHOR"
 
         elif is_headword_only(cells):
-            # An A-only line is either a headword that wrapped onto a second
-            # line, or a root/group label sitting above the forms it groups
-            # (the Cultic Actions workbook groups verbal forms under their
-            # root). They are told apart structurally:
-            #   * a wrap continues the *current* headword — it is only possible
-            #     right after that headword (prev line opened it) and is
-            #     followed by more of that headword's data (a blank-A row), or
-            #     it closes a bracket/paren left open in the headword;
-            #   * otherwise the label heads the *next* form and is a root.
-            # Whichever way it is read, the text is preserved (headword vs root
-            # column) — never dropped.
+            # An A-only line is either a wrapped headword or a Workbook IX root
+            # label. Local row shape cannot distinguish them reliably: the real
+            # source contains the same ANCHOR_A -> A-only -> ANCHOR_A geometry
+            # for both. Preserve definite-wrap evidence first, then use the
+            # workbook's authored schema role; otherwise fail closed.
             openable = prev_kind in ("ANCHOR_A", "WRAP")
             nxt = lines[i + 1][1] if i + 1 < len(lines) else None
             next_is_headwordless_data = nxt is not None and is_anchor(nxt) and not nxt["A"]
@@ -412,9 +435,16 @@ def parse_pdf(path: Path) -> list[dict[str, str]]:
             if openable and (next_is_headwordless_data or closes_bracket):
                 headword.append(A)
                 prev_kind = "WRAP"
-            else:
+            elif workbook_ordinal == 9:
                 root = A
                 prev_kind = "ROOT"
+            elif workbook_ordinal is not None and workbook_ordinal < 9 and openable:
+                headword.append(A)
+                prev_kind = "WRAP"
+            else:
+                raise WorkbookStructureError(
+                    "ambiguous A-only line requires a supported workbook role"
+                )
 
         else:
             # Continuation line carrying wrapped reference and/or comment text
