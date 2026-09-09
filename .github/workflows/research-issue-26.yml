@@ -1,0 +1,46 @@
+name: Research Burns alignment shapes
+
+on:
+  pull_request:
+    paths:
+      - 'research/issue-26/audit_alignment_shapes.py'
+      - '.github/workflows/research-issue-26.yml'
+      - 'src/ugarit_context_parsing/annotations.py'
+      - 'src/ugarit_context_parsing/references.py'
+      - 'src/ugarit_context_parsing/cuc_index.py'
+      - 'src/ugarit_context_parsing/pdf_source.py'
+      - 'scripts/parse_workbooks_to_csv.py'
+      - 'scripts/sources.py'
+
+permissions:
+  contents: read
+
+jobs:
+  source-safe-alignment-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Burns repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify CI provenance
+        run: python scripts/check_ci_provenance.py
+
+      - name: Check out exact reviewed CUC base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: DT-UCPH/cuc
+          ref: ad69400f5446e1c8217af01659c7c10ab00c015b
+          path: .cuc
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install .
+
+      - name: Run aggregate-only alignment research
+        run: python research/issue-26/audit_alignment_shapes.py --cuc .cuc/tf/0.2.8
