@@ -376,8 +376,12 @@ def _snapshot_from_tf(api: object) -> CucStructuralSnapshot:
 def build_reviewed_cuc_index(path: str | Path) -> ReviewedCucIndex:
     """Verify exact reviewed CUC bytes, then build deterministic lookup indexes."""
 
-    root = Path(path)
-    compatibility = _verify_reviewed_cuc_files(root)
+    supplied_root = Path(path)
+    compatibility = _verify_reviewed_cuc_files(supplied_root)
+    # Text-Fabric's location handling expects an absolute directory when a
+    # caller supplies a relative path. Resolve only after the symlink and exact
+    # byte checks above so path hardening remains authoritative.
+    root = supplied_root.resolve()
 
     otext = root / "otext.tf"
     _require_real_file(otext, label="section metadata")
@@ -388,7 +392,7 @@ def build_reviewed_cuc_index(path: str | Path) -> ReviewedCucIndex:
         "tablet column line g_cons",
         silent="deep",
     )
-    if api is None:
+    if not api:
         raise CucCompatibilityError(f"could not load reviewed CUC Text-Fabric from {root}")
 
     snapshot = _snapshot_from_tf(api)
