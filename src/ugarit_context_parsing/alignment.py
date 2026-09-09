@@ -410,6 +410,12 @@ def build_alignment_report(
     )
     for annotation in ordered_annotations:
         alignment = by_alignment[annotation.annotation_id]
+        expected_alignment = align_burns_annotation(annotation, index)
+        if alignment != expected_alignment:
+            raise ValueError(
+                "alignment does not match deterministic Burns→CUC resolution for "
+                f"{annotation.annotation_id}"
+            )
         if alignment.record_ids != annotation.record_ids:
             raise ValueError(
                 f"alignment record provenance differs for {annotation.annotation_id}"
