@@ -89,20 +89,13 @@ jobs:
           assert max(map(len, ambiguous)) == 8
           assert sum(1 for value in index.word_g_cons.values() if value == '') == 528
 
-          # The reviewed CUC contains incidental whitespace in at least one raw
-          # column value. Public lookup keys must be canonical for Burns' Roman
-          # column references, and normalization must not reduce key cardinality.
           assert all(column == column.strip() for _, column in index.column_nodes)
           assert all(column == column.strip() for _, column, _ in index.line_nodes)
-
           for nodes in index.bare_line_candidates.values():
               assert nodes == tuple(sorted(nodes))
           for words in index.line_words.values():
               assert isinstance(words, tuple)
 
-          # Exercise the production aligner against the verified real index with
-          # a legal synthetic tablet-only annotation. No Burns-derived payload is
-          # used or written, and alignment must not mutate the reviewed index.
           before = (
               len(index.tablet_nodes),
               len(index.column_nodes),
@@ -163,12 +156,9 @@ jobs:
           )
           from ugarit_context_parsing.source import WorkbookRecord
 
-          cuc = Path('.cuc/tf/0.2.8')
+          cuc = Path('.cuc/tf/0.2.8').resolve()
           index = build_reviewed_cuc_index(cuc)
 
-          # Choose a real reviewed-CUC line whose first two words can form a
-          # legal exact synthetic Burns headword. The strings come from the
-          # public CUC base, not the restricted Burns source.
           chosen = None
           for (tablet, column, line), line_node in sorted(index.line_nodes.items()):
               words = index.line_words[line_node]
@@ -250,8 +240,6 @@ jobs:
               assert tuple(combined.L.d(index.tablet_nodes[tablet], otype='line')) == tablet_lines
               assert tuple(combined.L.d(line_node, otype='word')) == line_words
 
-              # Two independent annotations select the same first word and the
-              # two-word annotation overlaps it. All survive module composition.
               first_payloads = burns_node_annotations(combined.F.burns_annotations.v(word1))
               assert len(first_payloads) == 3, first_payloads
               assert len({item['annotation_id'] for item in first_payloads}) == 3
