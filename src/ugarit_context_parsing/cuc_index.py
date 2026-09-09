@@ -290,21 +290,40 @@ def _build_index_from_snapshot(
     )
 
 
-def _section_tuple(value: object) -> tuple[str, ...]:
-    if isinstance(value, str):
-        return tuple(part.strip() for part in value.split(",") if part.strip())
-    if value is None:
-        return ()
+def _section_tuple(value: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
+def _read_otext_section_config(path: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    section_types: tuple[str, ...] | None = None
+    section_features: tuple[str, ...] | None = None
     try:
-        return tuple(str(part) for part in value)  # type: ignore[arg-type]
-    except TypeError:
-        return ()
+        with path.open("r", encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.rstrip("\r\n")
+                if line.startswith("@sectionTypes="):
+                    section_types = _section_tuple(line.split("=", 1)[1])
+                elif line.startswith("@sectionFeatures="):
+                    section_features = _section_tuple(line.split("=", 1)[1])
+    except UnicodeDecodeError as exc:
+        raise CucCompatibilityError("CUC otext.tf is not valid UTF-8") from exc
+
+    if section_types is None or section_features is None:
+        raise CucCompatibilityError("CUC otext.tf is missing sectionTypes/sectionFeatures metadata")
+    return section_types, section_features
 
 
-def _snapshot_from_tf(api: object) -> CucStructuralSnapshot:
-    # Text-Fabric exposes these interfaces dynamically; keeping extraction in
+def _snapshot_from_tf(
+    api: object,
+    *,
+    section_types: tuple[str, ...],
+    section_features: tuple[str, ...],
+) -> CucStructuralSnapshot:
+    # Text-Fabric exposes corpus structure dynamically; keeping extraction in
     # one small adapter leaves the index builder pure and easy to challenge with
-    # legal synthetic snapshots.
+    # legal synthetic snapshots. Section-schema names come directly from
+    # otext.tf because T.sectionFeatures exposes loaded feature-value maps in
+    # Text-Fabric 13.1 rather than the metadata-name tuple.
     F = api.F  # type: ignore[attr-defined]
     T = api.T  # type: ignore[attr-defined]
     L = api.L  # type: ignore[attr-defined]
@@ -364,8 +383,8 @@ def _snapshot_from_tf(api: object) -> CucStructuralSnapshot:
 
     return CucStructuralSnapshot(
         counts=counts,
-        section_types=_section_tuple(getattr(T, "sectionTypes", ())),
-        section_features=_section_tuple(getattr(T, "sectionFeatures", ())),
+        section_types=section_types,
+        section_features=section_features,
         tablets=tuple(tablets),
         columns=tuple(columns),
         lines=tuple(lines),
@@ -385,6 +404,7 @@ def build_reviewed_cuc_index(path: str | Path) -> ReviewedCucIndex:
 
     otext = root / "otext.tf"
     _require_real_file(otext, label="section metadata")
+    section_types, section_features = _read_otext_section_config(otext)
 
     from tf.fabric import Fabric
 
@@ -395,7 +415,11 @@ def build_reviewed_cuc_index(path: str | Path) -> ReviewedCucIndex:
     if not api:
         raise CucCompatibilityError(f"could not load reviewed CUC Text-Fabric from {root}")
 
-    snapshot = _snapshot_from_tf(api)
+    snapshot = _snapshot_from_tf(
+        api,
+        section_types=section_types,
+        section_features=section_features,
+    )
     index = _build_index_from_snapshot(
         snapshot,
         expected_counts=REVIEWED_CUC_COUNTS,
