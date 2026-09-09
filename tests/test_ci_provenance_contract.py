@@ -8,10 +8,13 @@ from scripts.check_ci_provenance import validate_provenance
 
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+TEST_WORKFLOW = WORKFLOWS / "test.yml"
 RUN_PATTERN = re.compile(
     r"^\s*run:\s*['\"]?python scripts/check_ci_provenance\.py['\"]?\s*(?:#.*)?$",
     re.MULTILINE,
 )
+JOB_PATTERN = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
+REQUIRED_JOBS = ("test", "agora-contract", "context-fabric-contract")
 BASE = "1" * 40
 HEAD = "2" * 40
 MERGE = "3" * 40
@@ -21,6 +24,27 @@ OTHER = "4" * 40
 def _workflow_texts() -> list[str]:
     paths = sorted((*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")))
     return [path.read_text(encoding="utf-8") for path in paths]
+
+
+def _job_blocks(workflow: str) -> dict[str, str]:
+    jobs: dict[str, list[str]] = {}
+    current: str | None = None
+    in_jobs = False
+    for line in workflow.splitlines():
+        if line == "jobs:":
+            in_jobs = True
+            continue
+        if not in_jobs:
+            continue
+        if line and not line.startswith(" "):
+            break
+        match = JOB_PATTERN.match(line)
+        if match:
+            current = match.group(1)
+            jobs[current] = [line]
+        elif current is not None:
+            jobs[current].append(line)
+    return {name: "\n".join(lines) for name, lines in jobs.items()}
 
 
 def _pull_request_event() -> dict:
@@ -34,8 +58,29 @@ def _pull_request_event() -> dict:
 
 class CiProvenanceWorkflowContractTests(unittest.TestCase):
     def test_every_required_job_definition_invokes_provenance_checker(self):
-        count = sum(len(RUN_PATTERN.findall(text)) for text in _workflow_texts())
-        self.assertEqual(count, 3)
+        workflow = TEST_WORKFLOW.read_text(encoding="utf-8")
+        jobs = _job_blocks(workflow)
+        self.assertEqual(set(jobs), set(REQUIRED_JOBS))
+        for name in REQUIRED_JOBS:
+            with self.subTest(job=name):
+                self.assertEqual(len(RUN_PATTERN.findall(jobs[name])), 1)
+
+        total = sum(len(RUN_PATTERN.findall(text)) for text in _workflow_texts())
+        self.assertEqual(total, len(REQUIRED_JOBS))
+
+    def test_job_block_parser_keeps_steps_in_their_own_jobs(self):
+        workflow = """jobs:
+  alpha:
+    steps:
+      - run: python scripts/check_ci_provenance.py
+  beta:
+    steps:
+      - run: echo ok
+"""
+        jobs = _job_blocks(workflow)
+        self.assertEqual(set(jobs), {"alpha", "beta"})
+        self.assertEqual(len(RUN_PATTERN.findall(jobs["alpha"])), 1)
+        self.assertEqual(len(RUN_PATTERN.findall(jobs["beta"])), 0)
 
 
 class CiProvenanceValidatorTests(unittest.TestCase):
