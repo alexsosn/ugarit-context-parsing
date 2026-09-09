@@ -19,6 +19,8 @@ Merged #22 provides immutable normalized source records and semantic annotations
 
 Therefore #27 should consume #26 alignment output; it must not independently re-resolve scholarly references or headwords.
 
+A crucial source-model distinction is that `BurnsAnnotation` contains the fields shared by a semantic occurrence, while row-specific findspot/provenance/comments remain on the ordered `BurnsSourceRecord` members referenced by `record_ids`. A CUC module that serialized only annotation fields plus record IDs would not satisfy parent #21's requirement that contextual/findspot/comments remain available from the combined corpus. The authoritative node payload must therefore embed the ordered row-level member records as well as their IDs.
+
 ## Exact reviewed CUC compatibility
 
 `cuc_index.py` binds production alignment to:
@@ -65,6 +67,7 @@ Minimum payload fields:
 - stable semantic `annotation_id`;
 - stable `occurrence_id` and target ordinal;
 - ordered source `record_ids`;
+- ordered `source_records`, each carrying at least `record_id`, relative `source_file`, `source_row`, `source_page`, `locus`, `room`, `point`, `depth`, `disputed`, and `comments`;
 - annotation provenance/taxonomy needed by consumers: worksheet ID/number/role, workbook number/label, section, root, headword, KTU/reference, textual/semantic/interpretive status;
 - occurrence disposition/reason/confidence;
 - anchor kind;
@@ -72,6 +75,8 @@ Minimum payload fields:
 - context line node;
 - structured target;
 - ambiguity candidate line/span tuples when present.
+
+The ordered member-record objects are obtained by resolving the annotation's `record_ids` against `NormalizedBurnsSource.records`; missing, duplicated, or double-claimed records must already fail through #26 report validation and must never be silently omitted.
 
 The canonical JSON itself is the authoritative source for Burns module annotations. Derived convenience features must be projections from these objects and may never contain information absent from the authoritative payload.
 
@@ -108,7 +113,7 @@ Do not copy CUC diplomatic/linguistic features such as `otype`, `oslots`, `g_con
 
 Use `json.dumps(..., ensure_ascii=False, sort_keys=True, separators=(",", ":"))`.
 
-This preserves Unicode directly and escapes embedded newlines inside the single TF feature value. After TF save/reload, parsing the JSON recovers the original Unicode/newline/punctuation.
+This preserves Unicode directly and escapes embedded newlines inside the single TF feature value. After TF save/reload, parsing the JSON recovers the original Unicode/newline/punctuation, including row-level comments/findspot text.
 
 Per-node authoritative entries are sorted by `(annotation_id, occurrence_id, anchor_kind, anchor_nodes)` after exact deduplication. Projection arrays are sorted Unicode strings.
 
@@ -182,7 +187,7 @@ Planned API:
 - `build_burns_module_report(source, alignments, index, module)`;
 - `write_burns_module(module, report, output_dir, fabric_factory=None)`.
 
-Core RED must cover issue #27's no-warp, multiplicity, multi-word reconstruction, overlap, deduplication, canonical order, Unicode/newline/punctuation, metadata, and transactional rules. Real combined CUC loading follows core GREEN in the permanent exact-CUC workflow.
+Core RED must cover issue #27's no-warp, multiplicity, multi-word reconstruction, overlap, deduplication, canonical order, Unicode/newline/punctuation and row-level metadata, compatibility metadata, and transactional rules. Real combined CUC loading follows core GREEN in the permanent exact-CUC workflow.
 
 ## Risks / adversarial targets
 
@@ -191,6 +196,7 @@ Final independent review must specifically attack:
 - accidentally creating annotation nodes or warp files;
 - payload loss when multiple annotations share a node;
 - treating a copied multi-word payload as multiple annotations;
+- loss of row-specific findspot/comments while only semantic annotation fields survive;
 - deduplicating by headword/category instead of stable identity;
 - overwriting nested/overlapping spans;
 - feature values containing non-canonical/order-dependent JSON;
