@@ -97,7 +97,7 @@ class NormalizedBurnsSource:
 
 
 _WORKBOOK_RE = re.compile(r"^(0[1-9])(?:\s|$)")
-_WORKSHEET_RE = re.compile(r"^Worksheet\s+([1-5])$", re.IGNORECASE)
+_WORKSHEET_RE = re.compile(r"(?:^|.*\s)Worksheet\s+([1-5])$", re.IGNORECASE)
 _WORKSHEET_ROLES = {
     1: BurnsWorksheetRole.PRIME_GP,
     2: BurnsWorksheetRole.PRIME_PH,
