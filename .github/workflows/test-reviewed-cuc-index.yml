@@ -66,6 +66,12 @@ jobs:
           assert max(map(len, ambiguous)) == 8
           assert sum(1 for value in index.word_g_cons.values() if value == '') == 528
 
+          # The reviewed CUC contains incidental whitespace in at least one raw
+          # column value. Public lookup keys must be canonical for Burns' Roman
+          # column references, and normalization must not reduce key cardinality.
+          assert all(column == column.strip() for _, column in index.column_nodes)
+          assert all(column == column.strip() for _, column, _ in index.line_nodes)
+
           for nodes in index.bare_line_candidates.values():
               assert nodes == tuple(sorted(nodes))
           for words in index.line_words.values():
