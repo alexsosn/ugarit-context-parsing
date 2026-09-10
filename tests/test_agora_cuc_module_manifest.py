@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import tomllib
 import unittest
+from importlib.metadata import version as installed_version
 from pathlib import Path
 
 
@@ -102,8 +102,7 @@ class BurnsAgoraProductManifestRedTests(unittest.TestCase):
                 self.assertNotIn("composition", item["output"])
 
     def test_ticket_does_not_smuggle_a_release_or_version_change(self):
-        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertEqual(pyproject["project"]["version"], "0.2.0")
+        self.assertEqual(installed_version("ugarit-context-parsing"), "0.2.0")
         self.assertEqual(self.manifest["plugin"]["version"], "0.2.0")
 
 
