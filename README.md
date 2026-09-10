@@ -2,9 +2,9 @@
 
 Structured extraction of the cultic-vocabulary **Workbooks** into per-worksheet
 CSV files and of the thesis **Appendix** into a KTU findspot table, with the
-Ugaritic transliteration repaired to standard Unicode. The repository also
-ships an installable Workbooks → Text-Fabric materializer for local use and for
-Agora/Context-Fabric integration.
+Ugaritic transliteration repaired to standard Unicode. The installable package
+also materializes the Workbooks as a **CUC-aligned Text-Fabric feature module**
+for local use and Context-Fabric/cfabric-mcp composition.
 
 ## Source
 
@@ -26,9 +26,11 @@ The worksheet PDFs, the Appendix and the thesis volumes are from:
 - [`scripts/sources.py`](scripts/sources.py) — downloads and unpacks the two
   source deposits, verifying a pinned SHA-256 on each.
 - [`src/ugarit_context_parsing/`](src/ugarit_context_parsing/) — the installable
-  Workbooks CSV/PDF → Text-Fabric converter used by the Agora materializer.
-- [`agora.materializer.json`](agora.materializer.json) — Agora v1 declarations
-  for user-local CSV and PDF materialization.
+  Workbooks CSV/PDF → CUC feature-module materializer and its legacy standalone
+  compatibility converter.
+- [`agora.materializer.json`](agora.materializer.json) — the current Agora v1
+  declarations for the legacy single-input materializers; see the Agora section
+  below for the parent-resource limitation.
 - [`CONTEXTUALIST_APPROACH.md`](CONTEXTUALIST_APPROACH.md) — an overview of the
   dissertation's contextualist method, the significance of its annotation
   scheme, and the role of the parser.
@@ -65,7 +67,7 @@ never leaves a half-written input behind.
 The Appendix parser needs poppler's `pdftotext` on `PATH` (`brew install
 poppler`); it has no Python dependencies.
 
-## Materializing the Workbooks as Text-Fabric
+## Materializing a CUC-aligned Burns feature module
 
 Install the project in a Python 3.10+ environment:
 
@@ -73,16 +75,28 @@ Install the project in a Python 3.10+ environment:
 python -m pip install .
 ```
 
+The primary product is a feature-only Burns annotation module layered on the
+exact reviewed Copenhagen Ugaritic Corpus (CUC) Text-Fabric base. The current
+compatibility contract is:
+
+- repository: `DT-UCPH/cuc`
+- commit: `ad69400f5446e1c8217af01659c7c10ab00c015b`
+- Text-Fabric directory/version: `tf/0.2.8`
+
+The CLI verifies the required CUC files by size and SHA-256 before indexing or
+writing a module. It does not download CUC automatically.
+
 ### From generated CSV
 
 The normal parser output may contain both one-level Workbook CSV files and the
-root-level `appendix.csv`. The Workbooks materializer deliberately reads only
-`*/*.csv`, so the Appendix table is not mixed into the contextual graph.
+root-level `appendix.csv`. The Workbooks loader deliberately reads only
+`*/*.csv`, so the Appendix table is not mixed into the Burns annotations.
 
 ```bash
-ugarit-context-parsing convert output \
+ugarit-context-parsing module output \
   --input-format csv \
-  --output tf/burns-workbooks
+  --cuc /path/to/cuc/tf/0.2.8 \
+  --output tf/burns-module
 ```
 
 ### Directly from the Workbook PDFs
@@ -92,55 +106,94 @@ it does not maintain a second interpretation of the source layout and it never
 downloads data during materialization.
 
 ```bash
+ugarit-context-parsing module Workbooks \
+  --input-format pdf \
+  --cuc /path/to/cuc/tf/0.2.8 \
+  --output tf/burns-module
+```
+
+Both source paths feed the same normalization, CUC verification/indexing,
+alignment, module-building, reporting, and publishing pipeline. Input symlinks
+are rejected rather than followed or silently skipped.
+
+### Feature-module output
+
+A successful module contains exactly these six Text-Fabric node features plus a
+deterministic `burns-module-report.json`:
+
+- `burns_annotations.tf` — authoritative lossless Burns annotation payloads
+  attached to selected CUC nodes;
+- `burns_annotation_ids.tf` — annotation-ID projection;
+- `burns_semantic_statuses.tf` — contextual/cultic interpretation-status
+  projection;
+- `burns_worksheet_roles.tf` — source worksheet-role projection;
+- `burns_sections.tf` — Burns section projection;
+- `burns_headwords.tf` — Burns headword projection.
+
+The module does **not** emit `otype.tf`, `oslots.tf`, `otext.tf`, or copies of
+CUC diplomatic features such as `g_cons.tf`, `tablet.tf`, `column.tf`, or
+`line.tf`. CUC owns the node graph; Burns contributes annotations to those
+existing nodes. Unresolved, ambiguous, partial, out-of-CUC, and non-textual
+source annotations remain accounted for in the module report rather than being
+silently promoted to guessed anchors.
+
+With a Context-Fabric/cfabric-mcp version that supports ordered locations, load
+the CUC base first and the Burns module second as one logical corpus. The module
+writer and integration tests require CUC slot/node counts and navigation to
+remain unchanged.
+
+### Deprecated standalone row-slot converter
+
+The older standalone Burns graph remains temporarily available for compatibility:
+
+```bash
+ugarit-context-parsing convert output \
+  --input-format csv \
+  --output tf/burns-workbooks
+```
+
+```bash
 ugarit-context-parsing convert Workbooks \
   --input-format pdf \
   --output tf/burns-workbooks
 ```
 
-Both paths produce the same TF graph model plus a deterministic
-`conversion-report.json`. The required artifact files include `otype.tf`,
-`oslots.tf`, and `otext.tf`. Input symlinks are rejected rather than followed or
-silently skipped.
+`convert` is deprecated and prints an explicit diagnostic directing users to
+`module`. It still produces the historical standalone graph: `record` slots,
+`worksheet` / `section` / `entry` section nodes, all Workbook columns as
+features, `otype.tf`, `oslots.tf`, `otext.tf`, and `conversion-report.json`.
+Its removal/version boundary is tracked separately so existing scripts are not
+silently broken by this migration.
 
-### TF graph model
+The legacy corpus' narrow CUC interoperability fields (`cuc_tablet` and
+`language`) do not make it a CUC extension: it does not contain CUC diplomatic
+`sign`, `word`, `line`, or `column` structure.
 
-A Burns table row is the TF slot type `record`. The source hierarchy is exposed
-through the section types `worksheet`, `section`, and `entry`. Every Workbook
-column is retained as a feature, together with relative source-file and row/page
-provenance.
+### Agora status
 
-The CUC interoperability layer is intentionally narrow:
-
-- exact KTU identifiers such as `1.14` receive the additive
-  `cuc_tablet="KTU 1.14"` feature, matching the Copenhagen Ugaritic Corpus tablet
-  spelling;
-- `language=Ugaritic` follows CUC's language value;
-- the Unicode transliteration produced by the existing Workbook parser is kept.
-
-The converter does **not** create CUC `sign`, `word`, `line`, or `column` nodes,
-because Burns' contextual tables do not encode the diplomatic text structure
-needed to justify them. The generated corpus remains Burns-derived data; it is
-not a copy, extension, or replacement of DT-UCPH/cuc.
-
-### Agora materializers
-
-`agora.materializer.json` declares two user-local, network-denied materializers:
+`agora.materializer.json` currently retains the two legacy user-local,
+network-denied single-input materializers:
 
 - `burns-workbooks-csv-text-fabric`
 - `burns-workbooks-pdf-text-fabric`
 
-Agora can install this repository as a Python materializer and execute either
-path in its materialization host. Automatic resource → materializer → consumer
-composition is an Agora concern and is not asserted by this upstream manifest.
-The emitted TF artifact is intended to be loadable by Text-Fabric 13.x and the
-Context-Fabric/cfabric-mcp stack.
+This is a compatibility state, not the target architecture. A CUC-aligned Burns
+module requires two independent runtime inputs: the user-local Burns source and
+an exact acquired CUC parent resource. Agora's current materializer manifest
+contract can pass a source and output path but cannot yet bind/pass a parent
+resource path. That capability is tracked in `alexsosn/Agora#135`.
+
+Until that lands, this repository does **not** advertise a fake one-input Agora
+module materializer, copy CUC into Burns output, or enable an implicit network
+fallback. The public `module` CLI is the truthful local materialization path;
+#29 tracks the final Agora product/registry migration.
 
 ### Appendix scope
 
 `output/appendix.csv` has a different 11-column KTU catalogue schema. It is
 explicitly excluded from the Workbooks materializer; Appendix → TF needs its own
-graph/materializer design rather than being coerced into the cultic-vocabulary
-row model.
+graph/materializer design rather than being coerced into either the Burns
+annotation module or the legacy row model.
 
 ## License and attribution
 
