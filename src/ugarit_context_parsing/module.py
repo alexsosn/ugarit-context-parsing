@@ -15,6 +15,7 @@ from .alignment import (
 )
 from .annotations import BurnsAnnotation, BurnsSourceRecord, NormalizedBurnsSource
 from .cuc_index import ReviewedCucIndex, reviewed_cuc_compatibility_payload
+from .publication import prepare_output_root
 
 MODULE_SCHEMA = "burns-tf-module-v1"
 NODE_ANNOTATION_SCHEMA = "burns-node-annotation-v1"
@@ -709,6 +710,53 @@ def _validate_module_for_write(module: BurnsModuleData, report: Mapping[str, obj
     )
 
 
+def _validate_existing_module_output(output: Path) -> None:
+    prepare_output_root(output, label="Burns module")
+    if not output.exists():
+        return
+
+    for path in sorted(output.glob("*.tf"), key=lambda item: item.name):
+        if path.is_symlink():
+            raise ValueError(f"existing Burns module TF candidate is a symlink: {path.name}")
+        if not path.is_file():
+            raise ValueError(f"existing Burns module TF candidate is not a regular file: {path.name}")
+        if not path.name.startswith("burns_"):
+            raise ValueError(
+                "refusing to publish Burns module into directory containing non-Burns TF files: "
+                + path.name
+            )
+
+    report = output / REPORT_FILE
+    if report.is_symlink():
+        raise ValueError("existing Burns module report is a symlink")
+    if report.exists() and not report.is_file():
+        raise ValueError("existing Burns module report is not a regular file")
+
+
+def _validate_staged_module_tf(stage: Path) -> None:
+    staged_names: set[str] = set()
+    for path in sorted(stage.glob("*.tf"), key=lambda item: item.name):
+        if path.is_symlink():
+            raise ValueError(f"staged Burns module feature is a symlink: {path.name}")
+        if not path.is_file():
+            raise ValueError(f"staged Burns module entry is not a regular file: {path.name}")
+        staged_names.add(path.name)
+
+    staged_tf = frozenset(staged_names)
+    if staged_tf != _EXPECTED_TF_FILES:
+        missing = sorted(_EXPECTED_TF_FILES - staged_tf)
+        extra = sorted(staged_tf - _EXPECTED_TF_FILES)
+        details = []
+        if missing:
+            details.append("missing=" + ",".join(missing))
+        if extra:
+            details.append("extra=" + ",".join(extra))
+        raise RuntimeError(
+            "Text-Fabric Burns module stage has unexpected feature inventory: "
+            + "; ".join(details)
+        )
+
+
 def _publish(stage: Path, output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     old_owned = sorted(
@@ -751,21 +799,8 @@ def write_burns_module(
 ) -> bool:
     _validate_module_for_write(module, report)
 
-    output = Path(output_dir)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    if output.exists() and not output.is_dir():
-        raise ValueError(f"Burns module output path is not a directory: {output}")
-    if output.is_dir():
-        foreign_tf = sorted(
-            path.name
-            for path in output.glob("*.tf")
-            if path.is_file() and not path.name.startswith("burns_")
-        )
-        if foreign_tf:
-            raise ValueError(
-                "refusing to publish Burns module into directory containing non-Burns TF files: "
-                + ", ".join(foreign_tf)
-            )
+    output = prepare_output_root(output_dir, label="Burns module")
+    _validate_existing_module_output(output)
 
     fabric = _make_fabric(fabric_factory)
     with TemporaryDirectory(prefix=".burns-module-stage-", dir=output.parent) as stage_dir:
@@ -784,25 +819,17 @@ def write_burns_module(
         if not ok:
             return False
 
-        staged_tf = frozenset(
-            path.name for path in stage.glob("*.tf") if path.is_file()
-        )
-        if staged_tf != _EXPECTED_TF_FILES:
-            missing = sorted(_EXPECTED_TF_FILES - staged_tf)
-            extra = sorted(staged_tf - _EXPECTED_TF_FILES)
-            details = []
-            if missing:
-                details.append("missing=" + ",".join(missing))
-            if extra:
-                details.append("extra=" + ",".join(extra))
-            raise RuntimeError(
-                "Text-Fabric Burns module stage has unexpected feature inventory: "
-                + "; ".join(details)
-            )
+        _validate_staged_module_tf(stage)
 
-        (stage / REPORT_FILE).write_text(
+        report_stage = stage / REPORT_FILE
+        if report_stage.is_symlink():
+            raise ValueError("staged Burns module report is a symlink")
+        if report_stage.exists() and not report_stage.is_file():
+            raise ValueError("staged Burns module report is not a regular file")
+        report_stage.write_text(
             _canonical_json(report) + "\n",
             encoding="utf-8",
         )
+        _validate_existing_module_output(output)
         _publish(stage, output)
     return True

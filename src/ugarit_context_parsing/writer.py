@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from typing import Callable, Protocol
 
 from .graph import TFData
+from .publication import prepare_output_root
 
 
 class _FabricLike(Protocol):
@@ -111,10 +112,9 @@ def _read_existing_burns_report(path: Path) -> dict[str, object]:
 
 
 def _validate_existing_output(output: Path) -> tuple[Path, ...]:
+    output = prepare_output_root(output, label="legacy Text-Fabric")
     if not output.exists():
         return ()
-    if not output.is_dir():
-        raise ValueError(f"legacy Text-Fabric output path is not a directory: {output}")
 
     tf_entries = sorted(output.glob("*.tf"), key=lambda path: path.name)
     report = output / _REPORT
@@ -229,7 +229,6 @@ def write_artifact(
         raise ValueError("refusing to write artifact with failed conversion report")
 
     output = Path(output_dir)
-    output.parent.mkdir(parents=True, exist_ok=True)
     _validate_existing_output(output)
     fabric = _make_fabric(fabric_factory)
     with TemporaryDirectory(prefix=".burns-tf-stage-", dir=output.parent) as stage_dir:
