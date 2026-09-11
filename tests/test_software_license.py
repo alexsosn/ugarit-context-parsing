@@ -33,13 +33,13 @@ class SoftwareLicenseContractTests(unittest.TestCase):
 
     def test_readme_separates_software_and_burns_data_terms(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        lowered = readme.casefold()
-        self.assertIn("software license", lowered)
-        self.assertIn("mit", lowered)
-        self.assertIn("cc by-nc-nd 2.5", lowered)
-        self.assertIn("generated", lowered)
-        self.assertIn("do not redistribute", lowered)
-        self.assertIn("burns", lowered)
+        normalized = " ".join(readme.casefold().split())
+        self.assertIn("software license", normalized)
+        self.assertIn("mit", normalized)
+        self.assertIn("cc by-nc-nd 2.5", normalized)
+        self.assertIn("generated", normalized)
+        self.assertIn("do not redistribute", normalized)
+        self.assertIn("burns", normalized)
 
 
 if __name__ == "__main__":
