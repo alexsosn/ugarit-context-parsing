@@ -30,12 +30,21 @@ class ReviewedCucQuickstartDocumentationTests(unittest.TestCase):
         self.assertIn("python -m pip install .", normalized)
         self.assertIn(CUC_REMOTE, section)
         self.assertIn(CUC_COMMIT, section)
-        self.assertIn("git init cuc", normalized)
         self.assertIn(
-            f"git -C cuc fetch --depth 1 origin {CUC_COMMIT}",
+            f"git clone --filter=blob:none --no-checkout {CUC_REMOTE} cuc",
             normalized,
         )
-        self.assertIn("git -C cuc checkout --detach FETCH_HEAD", normalized)
+        self.assertIn(
+            f"git -C cuc checkout --detach {CUC_COMMIT}",
+            normalized,
+        )
+
+    def test_quickstart_does_not_depend_on_raw_sha_fetch_policy(self):
+        section = _materialization_section()
+        normalized = _normalized(section)
+
+        self.assertNotIn(f"fetch --depth 1 origin {CUC_COMMIT}", normalized)
+        self.assertNotIn("checkout --detach FETCH_HEAD", normalized)
 
     def test_first_runnable_module_path_uses_checked_out_reviewed_cuc(self):
         section = _materialization_section()
