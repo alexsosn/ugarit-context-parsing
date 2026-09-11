@@ -322,9 +322,6 @@ def build_burns_module(
 ) -> BurnsModuleData:
     _compatibility_payload(index)
 
-    # Reuse #26 as the integrity gate. This rejects missing/extra/forged
-    # alignments and proves every normalized source record is partitioned
-    # exactly once before any node payload is emitted.
     build_alignment_report(source, alignments, index)
 
     alignments_by_id = {alignment.annotation_id: alignment for alignment in alignments}
@@ -368,9 +365,6 @@ def build_burns_module(
         ]
         value = _canonical_json(payloads)
         authoritative[node] = value
-
-        # Derive every convenience feature from the authoritative serialized
-        # value, keeping burns_annotations as the sole source of truth.
         parsed = burns_node_annotations(value)
         for feature, projected_value in _project_payloads(parsed).items():
             projections[feature][node] = projected_value
@@ -379,10 +373,7 @@ def build_burns_module(
         "burns_annotations": authoritative,
         **projections,
     }
-    metadata = {
-        feature: _expected_feature_metadata(feature)
-        for feature in FEATURES
-    }
+    metadata = {feature: _expected_feature_metadata(feature) for feature in FEATURES}
     return BurnsModuleData(
         node_features=_immutable_nested(node_features),
         metadata=_immutable_metadata(metadata),
@@ -393,9 +384,7 @@ def _plain_module(module: BurnsModuleData) -> tuple[dict[str, dict[int, str]], d
     node_features = {
         feature: dict(values) for feature, values in module.node_features.items()
     }
-    metadata = {
-        feature: dict(values) for feature, values in module.metadata.items()
-    }
+    metadata = {feature: dict(values) for feature, values in module.metadata.items()}
     return node_features, metadata
 
 
@@ -545,9 +534,7 @@ def _validate_report_for_write(
         raise ValueError("Burns module report touched-node count is inconsistent")
     if counts.get("selected_occurrences") != len(occurrences):
         raise ValueError("Burns module report selected-occurrence count is inconsistent")
-    anchor_counts = dict(
-        sorted(Counter(item[2] for item in occurrences.values()).items())
-    )
+    anchor_counts = dict(sorted(Counter(item[2] for item in occurrences.values()).items()))
     if counts.get("anchor_kinds") != anchor_counts:
         raise ValueError("Burns module report anchor-kind counts are inconsistent")
 
@@ -821,7 +808,12 @@ def write_burns_module(
 
         _validate_staged_module_tf(stage)
 
-        (stage / REPORT_FILE).write_text(
+        report_stage = stage / REPORT_FILE
+        if report_stage.is_symlink():
+            raise ValueError("staged Burns module report is a symlink")
+        if report_stage.exists() and not report_stage.is_file():
+            raise ValueError("staged Burns module report is not a regular file")
+        report_stage.write_text(
             _canonical_json(report) + "\n",
             encoding="utf-8",
         )
