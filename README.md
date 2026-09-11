@@ -88,17 +88,19 @@ writing a module. It does not download CUC automatically.
 
 ### Quickstart with the exact reviewed CUC
 
-CUC acquisition is an explicit user action outside the converter. Fetch only
-the reviewed commit into a local `cuc` worktree and check it out detached:
+CUC acquisition is an explicit user action outside the converter. Clone without
+historical blob contents, then check out the reviewed commit directly rather
+than using whichever commit upstream `main` points to later:
 
 ```bash
-git init cuc
-git -C cuc remote add origin https://github.com/DT-UCPH/cuc.git
-git -C cuc fetch --depth 1 origin ad69400f5446e1c8217af01659c7c10ab00c015b
-git -C cuc checkout --detach FETCH_HEAD
+git clone --filter=blob:none --no-checkout https://github.com/DT-UCPH/cuc.git cuc
+git -C cuc checkout --detach ad69400f5446e1c8217af01659c7c10ab00c015b
+git -C cuc rev-parse HEAD
 ```
 
-Then materialize generated Workbook CSVs against that exact base:
+The last command should print
+`ad69400f5446e1c8217af01659c7c10ab00c015b`. Then materialize generated
+Workbook CSVs against that exact base:
 
 ```bash
 ugarit-context-parsing module output \
