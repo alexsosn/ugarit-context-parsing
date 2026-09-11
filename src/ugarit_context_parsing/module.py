@@ -39,8 +39,8 @@ _DESCRIPTIONS = {
     "burns_annotation_ids": "Canonical JSON array of Burns semantic annotation IDs",
     "burns_semantic_statuses": "Canonical JSON array of Burns semantic statuses",
     "burns_worksheet_roles": "Canonical JSON array of Burns worksheet roles",
-    "burns_sections": "Burns section projection",
-    "burns_headwords": "Burns headword projection",
+    "burns_sections": "Canonical JSON array of Burns section labels",
+    "burns_headwords": "Canonical JSON array of Burns source headwords",
 }
 
 _PROJECTION_FIELDS = {
