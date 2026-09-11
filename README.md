@@ -86,6 +86,33 @@ compatibility contract is:
 The CLI verifies the required CUC files by size and SHA-256 before indexing or
 writing a module. It does not download CUC automatically.
 
+### Quickstart with the exact reviewed CUC
+
+CUC acquisition is an explicit user action outside the converter. Clone without
+historical blob contents, then check out the reviewed commit directly rather
+than using whichever commit upstream `main` points to later:
+
+```bash
+git clone --filter=blob:none --no-checkout https://github.com/DT-UCPH/cuc.git cuc
+git -C cuc checkout --detach ad69400f5446e1c8217af01659c7c10ab00c015b
+git -C cuc rev-parse HEAD
+```
+
+The last command should print
+`ad69400f5446e1c8217af01659c7c10ab00c015b`. Then materialize generated
+Workbook CSVs against that exact base:
+
+```bash
+ugarit-context-parsing module output \
+  --input-format csv \
+  --cuc cuc/tf/0.2.8 \
+  --output tf/burns-module
+```
+
+The converter itself does not acquire or update CUC. If the checkout is wrong,
+incomplete, or modified, the reviewed file and structural fingerprint checks
+fail before a Burns module is published.
+
 ### CUC compatibility fingerprint
 
 Burns treats the reviewed CUC base as an exact structural dependency, not as a
@@ -118,7 +145,7 @@ root-level `appendix.csv`. The Workbooks loader deliberately reads only
 ```bash
 ugarit-context-parsing module output \
   --input-format csv \
-  --cuc /path/to/cuc/tf/0.2.8 \
+  --cuc cuc/tf/0.2.8 \
   --output tf/burns-module
 ```
 
@@ -131,7 +158,7 @@ downloads data during materialization.
 ```bash
 ugarit-context-parsing module Workbooks \
   --input-format pdf \
-  --cuc /path/to/cuc/tf/0.2.8 \
+  --cuc cuc/tf/0.2.8 \
   --output tf/burns-module
 ```
 
