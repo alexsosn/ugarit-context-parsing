@@ -56,7 +56,11 @@ class ModuleCliTests(unittest.TestCase):
             )
 
     def test_csv_module_routes_through_reviewed_pipeline_and_module_writer(self) -> None:
-        source = SimpleNamespace(files=("01/Worksheet 1.csv",), records=(object(),))
+        source = SimpleNamespace(
+            root=Path("burns-source").resolve(),
+            files=("01/Worksheet 1.csv",),
+            records=(object(),),
+        )
         normalized = SimpleNamespace(records=(object(),), annotations=(object(), object()))
         index = object()
         alignments = (object(), object())
@@ -108,7 +112,11 @@ class ModuleCliTests(unittest.TestCase):
         legacy_writer.assert_not_called()
 
     def test_pdf_module_uses_pdf_loader_then_same_module_pipeline(self) -> None:
-        source = SimpleNamespace(files=("01/Worksheet 1.pdf",), records=(object(),))
+        source = SimpleNamespace(
+            root=Path("burns-source").resolve(),
+            files=("01/Worksheet 1.pdf",),
+            records=(object(),),
+        )
         normalized = SimpleNamespace(records=(object(),), annotations=(object(),))
         index = object()
         alignments = (object(),)
@@ -156,7 +164,11 @@ class ModuleCliTests(unittest.TestCase):
         writer.assert_called_once_with(module, report, Path("tf/burns-module"))
 
     def test_invalid_cuc_fails_before_module_publication(self) -> None:
-        source = SimpleNamespace(files=("01/Worksheet 1.csv",), records=(object(),))
+        source = SimpleNamespace(
+            root=Path("burns-source").resolve(),
+            files=("01/Worksheet 1.csv",),
+            records=(object(),),
+        )
         normalized = SimpleNamespace(records=(object(),), annotations=(object(),))
         writer = Mock()
 
@@ -188,7 +200,11 @@ class ModuleCliTests(unittest.TestCase):
         writer.assert_not_called()
 
     def test_legacy_convert_still_runs_with_visible_deprecation(self) -> None:
-        source = SimpleNamespace(files=("01/Worksheet 1.csv",), records=(object(),))
+        source = SimpleNamespace(
+            root=Path("burns-source").resolve(),
+            files=("01/Worksheet 1.csv",),
+            records=(object(),),
+        )
         data = object()
         report = {"status": "ok"}
         stderr = io.StringIO()
