@@ -75,13 +75,18 @@ def _validate_source_output_disjoint(source_root: Path, output: Path) -> None:
         )
 
 
+def _validated_source_root(args: argparse.Namespace, source) -> Path:
+    """Use the loader's canonical root when available without widening its public seam."""
+    return Path(getattr(source, "root", args.source))
+
+
 def _run_module(args: argparse.Namespace) -> int:
     try:
         source = _load_source(args)
     except SourceValidationError as exc:
         raise SystemExit(f"source validation failed: {exc}") from exc
 
-    _validate_source_output_disjoint(source.root, args.output)
+    _validate_source_output_disjoint(_validated_source_root(args, source), args.output)
 
     try:
         normalized = normalize_workbook_records(source.records)
@@ -114,7 +119,7 @@ def _run_convert(args: argparse.Namespace) -> int:
     except SourceValidationError as exc:
         raise SystemExit(f"source validation failed: {exc}") from exc
 
-    _validate_source_output_disjoint(source.root, args.output)
+    _validate_source_output_disjoint(_validated_source_root(args, source), args.output)
 
     data = build_tf_data(source)
     report = build_conversion_report(
