@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from importlib import metadata
+
 from .graph import TFData
 from .identifiers import normalize_cuc_tablet
 from .source import WorkbookSource
@@ -36,7 +38,7 @@ def build_conversion_report(
         "schema_version": 1,
         "converter": {
             "name": "ugarit-context-parsing",
-            "version": "0.2.0",
+            "version": metadata.version("ugarit-context-parsing"),
         },
         "source": {
             "format": source_format,
