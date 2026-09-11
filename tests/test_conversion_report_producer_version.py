@@ -46,7 +46,11 @@ class ConversionReportProducerVersionTests(unittest.TestCase):
     def test_report_follows_future_installed_producer_version_not_source_constant(self):
         source, data = self._source_and_data()
 
-        with patch("ugarit_context_parsing.report.metadata.version", return_value="9.8.7"):
+        with patch(
+            "ugarit_context_parsing.report.metadata.version",
+            return_value="9.8.7",
+            create=True,
+        ):
             report = build_conversion_report(source, data, source_format="csv")
 
         self.assertEqual(report["schema_version"], 1)
@@ -59,6 +63,7 @@ class ConversionReportProducerVersionTests(unittest.TestCase):
             patch(
                 "ugarit_context_parsing.report.metadata.version",
                 side_effect=metadata.PackageNotFoundError("ugarit-context-parsing"),
+                create=True,
             ),
             self.assertRaises(metadata.PackageNotFoundError),
         ):
