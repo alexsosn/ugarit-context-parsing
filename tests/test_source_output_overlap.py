@@ -51,7 +51,8 @@ class SourceOutputOverlapTests(unittest.TestCase):
 
     def _assert_module_overlap_rejected(self, source_root: Path, output: Path) -> None:
         source = self._source(source_root)
-        normalizer = Mock(return_value=object())
+        normalized = SimpleNamespace(records=(object(),), annotations=(object(),))
+        normalizer = Mock(return_value=normalized)
         indexer = Mock(return_value=object())
         aligner = Mock(return_value=())
         builder = Mock(return_value=object())
@@ -66,6 +67,7 @@ class SourceOutputOverlapTests(unittest.TestCase):
             patch.object(cli, "build_burns_module", builder),
             patch.object(cli, "build_burns_module_report", reporter),
             patch.object(cli, "write_burns_module", writer),
+            redirect_stdout(io.StringIO()),
             self.assertRaisesRegex(SystemExit, "source/output paths must be disjoint"),
         ):
             cli.main(
