@@ -3,7 +3,7 @@
   "plugin": {
     "id": "ugarit-context-parsing",
     "name": "Ugarit Context Parsing",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "repository": "alexsosn/ugarit-context-parsing"
   },
   "materializers": [
