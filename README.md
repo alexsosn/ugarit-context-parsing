@@ -220,6 +220,15 @@ annotation module or the legacy row model.
 
 ## License and attribution
 
+### Software license
+
+The software source code in this repository is licensed under the **MIT License**.
+See [`LICENSE`](LICENSE). This MIT license applies to the repository software;
+it does not relicense the Burns source material, generated Burns-derived data,
+or the external CUC corpus.
+
+### Burns source material and generated artifacts
+
 The source Workbooks and thesis are © Duncan Coe Burns (2003) and are made
 available under a **Creative Commons Attribution-NonCommercial-NoDerivs 2.5**
 licence (CC BY-NC-ND 2.5).
@@ -231,3 +240,7 @@ kept local and are not committed or redistributed by this repository. Do not
 redistribute generated CSV/TF artifacts without permission from the copyright
 holder. Users can obtain the licensed source files from the link above and run
 the parsers/materializer for their own use.
+
+The reviewed Copenhagen Ugaritic Corpus (CUC) base is an external dependency
+and is not redistributed by this repository; its upstream license remains
+separate from both this software license and the Burns source terms.
