@@ -100,21 +100,27 @@ class MaterializationTests(unittest.TestCase):
         self.assertNotIn("synthetic note", payload)
         self.assertNotIn("synthetic two", payload)
 
-    def test_successful_publication_replaces_tf_set_and_report_together(self):
+    def test_successful_publication_replaces_owned_tf_set_and_report_together(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = self._source(root / "source")
             data = build_tf_data(source)
             report = build_conversion_report(source, data, source_format="csv")
             output = root / "tf"
-            output.mkdir()
-            (output / "stale.tf").write_text("old", encoding="utf-8")
+
+            self.assertTrue(
+                write_artifact(data, report, output, fabric_factory=_FakeFabric)
+            )
+            (output / "headword.tf").write_text("old owned feature", encoding="utf-8")
             (output / "unrelated.txt").write_text("keep", encoding="utf-8")
 
             ok = write_artifact(data, report, output, fabric_factory=_FakeFabric)
 
             self.assertTrue(ok)
-            self.assertFalse((output / "stale.tf").exists())
+            self.assertEqual(
+                (output / "headword.tf").read_text(encoding="utf-8"),
+                "synthetic headword.tf\n",
+            )
             self.assertEqual((output / "unrelated.txt").read_text(encoding="utf-8"), "keep")
             self.assertEqual(
                 json.loads((output / "conversion-report.json").read_text(encoding="utf-8")),
@@ -123,26 +129,26 @@ class MaterializationTests(unittest.TestCase):
             for required in ("otype.tf", "oslots.tf", "otext.tf"):
                 self.assertTrue((output / required).is_file())
 
-    def test_failed_fabric_save_leaves_previous_artifact_untouched(self):
-        _FakeFabric.should_succeed = False
+    def test_failed_fabric_save_leaves_previous_owned_artifact_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = self._source(root / "source")
             data = build_tf_data(source)
             report = build_conversion_report(source, data, source_format="csv")
             output = root / "tf"
-            output.mkdir()
-            (output / "otype.tf").write_text("old corpus", encoding="utf-8")
-            (output / "conversion-report.json").write_text('{"old":true}\n', encoding="utf-8")
+
+            self.assertTrue(
+                write_artifact(data, report, output, fabric_factory=_FakeFabric)
+            )
+            old_otype = (output / "otype.tf").read_bytes()
+            old_report = (output / "conversion-report.json").read_bytes()
+            _FakeFabric.should_succeed = False
 
             ok = write_artifact(data, report, output, fabric_factory=_FakeFabric)
 
             self.assertFalse(ok)
-            self.assertEqual((output / "otype.tf").read_text(encoding="utf-8"), "old corpus")
-            self.assertEqual(
-                json.loads((output / "conversion-report.json").read_text(encoding="utf-8")),
-                {"old": True},
-            )
+            self.assertEqual((output / "otype.tf").read_bytes(), old_otype)
+            self.assertEqual((output / "conversion-report.json").read_bytes(), old_report)
 
     @mock.patch("ugarit_context_parsing.cli.write_artifact")
     def test_csv_cli_uses_shared_graph_and_report_path(self, write_artifact_mock):
