@@ -14,13 +14,7 @@ from .alignment import (
     build_alignment_report,
 )
 from .annotations import BurnsAnnotation, BurnsSourceRecord, NormalizedBurnsSource
-from .cuc_index import (
-    REVIEWED_CUC_COMMIT,
-    REVIEWED_CUC_MANIFEST_SHA256,
-    REVIEWED_CUC_REPOSITORY,
-    REVIEWED_CUC_VERSION,
-    ReviewedCucIndex,
-)
+from .cuc_index import ReviewedCucIndex, reviewed_cuc_compatibility_payload
 
 MODULE_SCHEMA = "burns-tf-module-v1"
 NODE_ANNOTATION_SCHEMA = "burns-node-annotation-v1"
@@ -45,8 +39,8 @@ _DESCRIPTIONS = {
     "burns_annotation_ids": "Canonical JSON array of Burns semantic annotation IDs",
     "burns_semantic_statuses": "Canonical JSON array of Burns semantic statuses",
     "burns_worksheet_roles": "Canonical JSON array of Burns worksheet roles",
-    "burns_sections": "Canonical JSON array of Burns section labels",
-    "burns_headwords": "Canonical JSON array of Burns source headwords",
+    "burns_sections": "Burns section projection",
+    "burns_headwords": "Burns headword projection",
 }
 
 _PROJECTION_FIELDS = {
@@ -107,21 +101,22 @@ def _canonical_json(value: object) -> str:
     )
 
 
-def _reviewed_compatibility_payload() -> dict[str, str]:
+def _reviewed_compatibility_identity() -> dict[str, str]:
+    payload = reviewed_cuc_compatibility_payload()
     return {
-        "repository": REVIEWED_CUC_REPOSITORY,
-        "commit": REVIEWED_CUC_COMMIT,
-        "version": REVIEWED_CUC_VERSION,
-        "manifest_sha256": REVIEWED_CUC_MANIFEST_SHA256,
+        "repository": str(payload["repository"]),
+        "commit": str(payload["commit"]),
+        "version": str(payload["version"]),
+        "manifest_sha256": str(payload["manifest_sha256"]),
     }
 
 
-def _compatibility_payload(index: ReviewedCucIndex) -> dict[str, str]:
+def _compatibility_payload(index: ReviewedCucIndex) -> dict[str, object]:
     compatibility = index.compatibility
     if compatibility is None:
         raise ValueError("Burns TF module requires a reviewed CUC compatibility identity")
 
-    expected = _reviewed_compatibility_payload()
+    expected = _reviewed_compatibility_identity()
     actual = {
         "repository": compatibility.repository,
         "commit": compatibility.commit,
@@ -133,7 +128,7 @@ def _compatibility_payload(index: ReviewedCucIndex) -> dict[str, str]:
             "Burns TF module requires the exact reviewed CUC identity: "
             f"expected {expected!r}; got {actual!r}"
         )
-    return actual
+    return reviewed_cuc_compatibility_payload()
 
 
 def _record_payload(record: BurnsSourceRecord) -> dict[str, object]:
@@ -271,15 +266,28 @@ def _project_payloads(
 
 
 def _expected_feature_metadata(feature: str) -> dict[str, str]:
-    compatibility = _reviewed_compatibility_payload()
+    compatibility = reviewed_cuc_compatibility_payload()
+    required_features = compatibility["required_features"]
+    node_type_counts = compatibility["node_type_counts"]
+    section_types = compatibility["section_types"]
+    section_features = compatibility["section_features"]
+    assert isinstance(required_features, list)
+    assert isinstance(node_type_counts, dict)
+    assert isinstance(section_types, list)
+    assert isinstance(section_features, list)
     return {
         "valueType": "str",
         "module": "Burns",
         "moduleSchema": MODULE_SCHEMA,
-        "cucRepository": compatibility["repository"],
-        "cucCommit": compatibility["commit"],
-        "cucVersion": compatibility["version"],
-        "cucManifestSha256": compatibility["manifest_sha256"],
+        "cucRepository": str(compatibility["repository"]),
+        "cucCommit": str(compatibility["commit"]),
+        "cucVersion": str(compatibility["version"]),
+        "cucManifestSha256": str(compatibility["manifest_sha256"]),
+        "cucCompatibilitySchema": str(compatibility["schema"]),
+        "cucRequiredFeatures": ",".join(str(value) for value in required_features),
+        "cucNodeTypeCounts": _canonical_json(node_type_counts),
+        "cucSectionTypes": ",".join(str(value) for value in section_types),
+        "cucSectionFeatures": ",".join(str(value) for value in section_features),
         "description": _DESCRIPTIONS[feature],
     }
 
@@ -508,8 +516,8 @@ def _validate_report_for_write(
         raise ValueError("refusing to write invalid Burns module report schema")
     if report.get("feature_inventory") != sorted(FEATURES):
         raise ValueError("Burns module report feature inventory does not match module")
-    if report.get("cuc_compatibility") != _reviewed_compatibility_payload():
-        raise ValueError("Burns module report compatibility is not the exact reviewed CUC identity")
+    if report.get("cuc_compatibility") != reviewed_cuc_compatibility_payload():
+        raise ValueError("Burns module report compatibility is not the exact reviewed CUC fingerprint")
 
     source_records = report.get("source_records")
     if not isinstance(source_records, list):
@@ -547,7 +555,7 @@ def _validate_report_for_write(
         raise ValueError("Burns module report embedded alignment report is missing")
     if alignment.get("schema") != "burns-cuc-alignment-report-v1":
         raise ValueError("Burns module report embedded alignment schema is invalid")
-    if alignment.get("cuc_compatibility") != _reviewed_compatibility_payload():
+    if alignment.get("cuc_compatibility") != _reviewed_compatibility_identity():
         raise ValueError("Burns module report embedded alignment compatibility is invalid")
     alignment_counts = alignment.get("counts")
     if not isinstance(alignment_counts, Mapping):
