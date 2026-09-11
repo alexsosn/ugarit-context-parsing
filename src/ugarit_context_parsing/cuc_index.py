@@ -13,6 +13,7 @@ REVIEWED_CUC_VERSION = "0.2.8"
 REVIEWED_CUC_MANIFEST_SHA256 = (
     "717e5b7f1c60b800e05f50f4cac27dac7562b45eecb48a8686c64cfab42a92ba"
 )
+REVIEWED_CUC_COMPATIBILITY_SCHEMA = "burns-cuc-compatibility-v1"
 
 
 class CucCompatibilityError(ValueError):
@@ -62,8 +63,9 @@ _REVIEWED_CUC_COUNTS = {
     "word": 27770,
 }
 REVIEWED_CUC_COUNTS: Mapping[str, int] = MappingProxyType(_REVIEWED_CUC_COUNTS)
-_REVIEWED_SECTION_TYPES = ("tablet", "column", "line")
-_REVIEWED_SECTION_FEATURES = ("tablet", "column", "line")
+REVIEWED_CUC_REQUIRED_FEATURES = ("column", "g_cons", "line", "tablet")
+REVIEWED_CUC_SECTION_TYPES = ("tablet", "column", "line")
+REVIEWED_CUC_SECTION_FEATURES = ("tablet", "column", "line")
 
 
 @dataclass(frozen=True)
@@ -117,6 +119,26 @@ class ReviewedCucIndex:
     bare_line_candidates: Mapping[tuple[str, int], tuple[int, ...]]
     line_words: Mapping[int, tuple[int, ...]]
     word_g_cons: Mapping[int, str]
+
+
+def reviewed_cuc_compatibility_payload() -> dict[str, object]:
+    """Return a fresh canonical description of the exact reviewed CUC contract."""
+
+    return {
+        "schema": REVIEWED_CUC_COMPATIBILITY_SCHEMA,
+        "repository": REVIEWED_CUC_REPOSITORY,
+        "commit": REVIEWED_CUC_COMMIT,
+        "version": REVIEWED_CUC_VERSION,
+        "manifest_sha256": REVIEWED_CUC_MANIFEST_SHA256,
+        "required_features": list(REVIEWED_CUC_REQUIRED_FEATURES),
+        "node_type_counts": dict(sorted(REVIEWED_CUC_COUNTS.items())),
+        "section_types": list(REVIEWED_CUC_SECTION_TYPES),
+        "section_features": list(REVIEWED_CUC_SECTION_FEATURES),
+        "required_files": {
+            name: {"size": item.size, "sha256": item.sha256}
+            for name, item in sorted(REVIEWED_CUC_FILES.items())
+        },
+    }
 
 
 def _sha256_file(path: Path) -> str:
@@ -344,7 +366,7 @@ def _snapshot_from_tf(
                 otype,
                 len(tuple(F.otype.s(otype))),
             )
-            for otype in ("sign", "column", "line", "tablet", "word")
+            for otype in REVIEWED_CUC_COUNTS
         )
     )
 
@@ -419,7 +441,7 @@ def build_reviewed_cuc_index(path: str | Path) -> ReviewedCucIndex:
     from tf.fabric import Fabric
 
     api = Fabric(locations=[str(root)], modules=[""], silent="deep").load(
-        "tablet column line g_cons",
+        " ".join(REVIEWED_CUC_REQUIRED_FEATURES),
         silent="deep",
     )
     if not api:
@@ -433,8 +455,8 @@ def build_reviewed_cuc_index(path: str | Path) -> ReviewedCucIndex:
     index = _build_index_from_snapshot(
         snapshot,
         expected_counts=REVIEWED_CUC_COUNTS,
-        expected_section_types=_REVIEWED_SECTION_TYPES,
-        expected_section_features=_REVIEWED_SECTION_FEATURES,
+        expected_section_types=REVIEWED_CUC_SECTION_TYPES,
+        expected_section_features=REVIEWED_CUC_SECTION_FEATURES,
         compatibility=compatibility,
     )
     return replace(index, compatibility=compatibility)
