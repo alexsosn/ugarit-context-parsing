@@ -86,6 +86,29 @@ compatibility contract is:
 The CLI verifies the required CUC files by size and SHA-256 before indexing or
 writing a module. It does not download CUC automatically.
 
+### CUC compatibility fingerprint
+
+Burns treats the reviewed CUC base as an exact structural dependency, not as a
+loose `0.2.x` compatibility range. Alignment uses the CUC `tablet`, `column`,
+`line`, and `g_cons` features together with the Text-Fabric warp/navigation
+structure. The reviewed base has 146017 `sign`, 27770 `word`, 7616 `line`, 334
+`column`, and 279 `tablet` nodes, with `tablet,column,line` as both the section
+types and section features.
+
+Every generated Burns feature header keeps the repository/commit/version and
+required-files manifest digest and also records a compact deterministic form of
+that structural fingerprint. `burns-module-report.json` carries the expanded
+fingerprint, including the exact required-file sizes and SHA-256 values used by
+the verifier. No local path, machine, platform, or timestamp is part of the
+compatibility identity.
+
+Updating Burns to a different CUC commit therefore requires a deliberate
+compatibility review: record the candidate fingerprint, prove the old
+fingerprint rejects it, rerun the reviewed-CUC alignment/module integration and
+Context-Fabric composition checks, and verify that existing CUC node identities
+are not silently remapped. Changing only the advertised CUC version is not a
+compatibility update.
+
 ### From generated CSV
 
 The normal parser output may contain both one-level Workbook CSV files and the
