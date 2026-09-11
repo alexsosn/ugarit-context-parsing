@@ -61,11 +61,27 @@ def _load_source(args: argparse.Namespace):
     )
 
 
+def _validate_source_output_disjoint(source_root: Path, output: Path) -> None:
+    canonical_source = Path(source_root).resolve(strict=False)
+    canonical_output = Path(output).resolve(strict=False)
+    if (
+        canonical_source == canonical_output
+        or canonical_source.is_relative_to(canonical_output)
+        or canonical_output.is_relative_to(canonical_source)
+    ):
+        raise SystemExit(
+            "source/output paths must be disjoint: "
+            f"source={canonical_source}; output={canonical_output}"
+        )
+
+
 def _run_module(args: argparse.Namespace) -> int:
     try:
         source = _load_source(args)
     except SourceValidationError as exc:
         raise SystemExit(f"source validation failed: {exc}") from exc
+
+    _validate_source_output_disjoint(source.root, args.output)
 
     try:
         normalized = normalize_workbook_records(source.records)
@@ -97,6 +113,9 @@ def _run_convert(args: argparse.Namespace) -> int:
         source = _load_source(args)
     except SourceValidationError as exc:
         raise SystemExit(f"source validation failed: {exc}") from exc
+
+    _validate_source_output_disjoint(source.root, args.output)
+
     data = build_tf_data(source)
     report = build_conversion_report(
         source,
