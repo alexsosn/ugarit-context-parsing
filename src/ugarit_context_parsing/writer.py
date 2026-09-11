@@ -13,6 +13,32 @@ class _FabricLike(Protocol):
 
 
 _REQUIRED_TF = frozenset(("otype.tf", "oslots.tf", "otext.tf"))
+_LEGACY_TF_NAMES = frozenset(
+    {
+        "otype.tf",
+        "source_file.tf",
+        "source_row.tf",
+        "source_page.tf",
+        "section_source.tf",
+        "root.tf",
+        "headword.tf",
+        "ktu.tf",
+        "cuc_tablet.tf",
+        "references.tf",
+        "locus.tf",
+        "room.tf",
+        "point.tf",
+        "depth.tf",
+        "disputed.tf",
+        "comments.tf",
+        "language.tf",
+        "worksheet.tf",
+        "section.tf",
+        "entry.tf",
+        "oslots.tf",
+        "otext.tf",
+    }
+)
 _REPORT = "conversion-report.json"
 
 
@@ -26,12 +52,21 @@ def _make_fabric(factory: Callable[..., _FabricLike] | None) -> _FabricLike:
     return factory(locations=[], modules=[], silent="deep")
 
 
-def _allowed_tf_names(data: TFData) -> frozenset[str]:
+def _requested_tf_names(data: TFData) -> frozenset[str]:
     return frozenset(
         {f"{name}.tf" for name in data.node_features}
         | {f"{name}.tf" for name in data.edge_features}
         | {"otext.tf"}
     )
+
+
+def _validate_requested_tf_inventory(data: TFData) -> None:
+    unexpected = sorted(_requested_tf_names(data) - _LEGACY_TF_NAMES)
+    if unexpected:
+        raise ValueError(
+            "legacy Burns data requests foreign or unknown Text-Fabric features: "
+            + ", ".join(unexpected)
+        )
 
 
 def _read_existing_burns_report(path: Path) -> dict[str, object]:
@@ -49,6 +84,8 @@ def _read_existing_burns_report(path: Path) -> dict[str, object]:
     converter = payload.get("converter")
     source = payload.get("source")
     checks = payload.get("checks")
+    tree_sha256 = source.get("tree_sha256") if isinstance(source, dict) else None
+    file_count = source.get("file_count") if isinstance(source, dict) else None
     if (
         type(payload.get("schema_version")) is not int
         or payload.get("schema_version") != 1
@@ -59,8 +96,11 @@ def _read_existing_burns_report(path: Path) -> dict[str, object]:
         or not converter["version"].strip()
         or not isinstance(source, dict)
         or source.get("format") not in {"csv", "pdf"}
-        or not isinstance(source.get("tree_sha256"), str)
-        or not isinstance(source.get("file_count"), int)
+        or not isinstance(tree_sha256, str)
+        or len(tree_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in tree_sha256)
+        or type(file_count) is not int
+        or file_count < 1
         or not isinstance(payload.get("counts"), dict)
         or not isinstance(checks, dict)
         or not checks
@@ -70,7 +110,7 @@ def _read_existing_burns_report(path: Path) -> dict[str, object]:
     return payload
 
 
-def _validate_existing_output(output: Path, data: TFData) -> tuple[Path, ...]:
+def _validate_existing_output(output: Path) -> tuple[Path, ...]:
     if not output.exists():
         return ()
     if not output.is_dir():
@@ -101,8 +141,7 @@ def _validate_existing_output(output: Path, data: TFData) -> tuple[Path, ...]:
             )
 
     names = {path.name for path in tf_entries}
-    allowed = _allowed_tf_names(data)
-    foreign = sorted(names - allowed)
+    foreign = sorted(names - _LEGACY_TF_NAMES)
     if foreign:
         raise ValueError(
             "refusing to replace foreign or unknown Text-Fabric files: "
@@ -117,9 +156,37 @@ def _validate_existing_output(output: Path, data: TFData) -> tuple[Path, ...]:
     return tuple(tf_entries) + (report,)
 
 
-def _publish(stage: Path, output: Path, old_owned: tuple[Path, ...]) -> None:
+def _validate_staged_tf(stage: Path) -> dict[str, Path]:
+    entries = sorted(stage.glob("*.tf"), key=lambda path: path.name)
+    staged: dict[str, Path] = {}
+    for path in entries:
+        if path.is_symlink():
+            raise ValueError(f"staged Text-Fabric file is a symlink: {path.name}")
+        if not path.is_file():
+            raise ValueError(f"staged Text-Fabric entry is not a regular file: {path.name}")
+        staged[path.name] = path
+
+    unexpected = sorted(set(staged) - _LEGACY_TF_NAMES)
+    if unexpected:
+        raise ValueError(
+            "staged Text-Fabric output contains unexpected or foreign files: "
+            + ", ".join(unexpected)
+        )
+    missing = sorted(_REQUIRED_TF - set(staged))
+    if missing:
+        raise RuntimeError(
+            "Text-Fabric save omitted required files: " + ", ".join(missing)
+        )
+    return staged
+
+
+def _publish(
+    staged_tf: dict[str, Path],
+    report_stage: Path,
+    output: Path,
+    old_owned: tuple[Path, ...],
+) -> None:
     output.mkdir(parents=True, exist_ok=True)
-    staged_tf = {path.name: path for path in stage.glob("*.tf") if path.is_file()}
     with TemporaryDirectory(prefix=".burns-tf-backup-", dir=output.parent) as backup_dir:
         backup = Path(backup_dir)
         moved_old: list[tuple[Path, Path]] = []
@@ -129,11 +196,10 @@ def _publish(stage: Path, output: Path, old_owned: tuple[Path, ...]) -> None:
                 target = backup / path.name
                 path.replace(target)
                 moved_old.append((target, path))
-            for name, path in staged_tf.items():
+            for name, path in sorted(staged_tf.items()):
                 target = output / name
                 path.replace(target)
                 installed.append(target)
-            report_stage = stage / _REPORT
             report_stage.replace(output / _REPORT)
             installed.append(output / _REPORT)
         except Exception:
@@ -158,12 +224,13 @@ def write_artifact(
         raise ValueError(
             "refusing to write invalid Text-Fabric data: " + "; ".join(failures)
         )
+    _validate_requested_tf_inventory(data)
     if report.get("status") != "ok":
         raise ValueError("refusing to write artifact with failed conversion report")
 
     output = Path(output_dir)
     output.parent.mkdir(parents=True, exist_ok=True)
-    old_owned = _validate_existing_output(output, data)
+    _validate_existing_output(output)
     fabric = _make_fabric(fabric_factory)
     with TemporaryDirectory(prefix=".burns-tf-stage-", dir=output.parent) as stage_dir:
         stage = Path(stage_dir)
@@ -179,14 +246,12 @@ def write_artifact(
         )
         if not ok:
             return False
-        missing = [name for name in sorted(_REQUIRED_TF) if not (stage / name).is_file()]
-        if missing:
-            raise RuntimeError(
-                "Text-Fabric save omitted required files: " + ", ".join(missing)
-            )
-        (stage / _REPORT).write_text(
+        staged_tf = _validate_staged_tf(stage)
+        report_stage = stage / _REPORT
+        report_stage.write_text(
             json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        _publish(stage, output, old_owned)
+        old_owned = _validate_existing_output(output)
+        _publish(staged_tf, report_stage, output, old_owned)
     return True
