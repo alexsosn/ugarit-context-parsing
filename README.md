@@ -200,16 +200,21 @@ network-denied single-input materializers:
 - `burns-workbooks-csv-text-fabric`
 - `burns-workbooks-pdf-text-fabric`
 
-This is a compatibility state, not the target architecture. A CUC-aligned Burns
-module requires two independent runtime inputs: the user-local Burns source and
-an exact acquired CUC parent resource. Agora's current materializer manifest
-contract can pass a source and output path but cannot yet bind/pass a parent
-resource path. That capability is tracked in `alexsosn/Agora#135`.
+This is the currently supported Agora registration, not the local module's
+architecture. The public `module` CLI already materializes the reviewed
+CUC-aligned Burns feature module, and Context-Fabric/cfabric-mcp can load that
+module together with the exact CUC base as separate ordered locations.
 
-Until that lands, this repository does **not** advertise a fake one-input Agora
-module materializer, copy CUC into Burns output, or enable an implicit network
-fallback. The public `module` CLI is the truthful local materialization path;
-#29 tracks the final Agora product/registry migration.
+Registering that module as an Agora materializer would require two independent
+runtime inputs: the user-local Burns source and an exact acquired CUC parent
+resource. The parent-resource execution capability tracked in
+`alexsosn/Agora#135` was **closed as not planned / deferred from the current
+Agora scope**. Therefore the Burns migration tracker #29 is blocked on a future
+Agora scope/capability change rather than on missing local converter support.
+
+This repository does **not** advertise a fake one-input Agora module
+materializer, copy CUC into Burns output, or enable an implicit network
+fallback. The public `module` CLI is the truthful local materialization path.
 
 ### Appendix scope
 
@@ -219,6 +224,15 @@ graph/materializer design rather than being coerced into either the Burns
 annotation module or the legacy row model.
 
 ## License and attribution
+
+### Software license
+
+The software source code in this repository is licensed under the **MIT License**.
+See [`LICENSE`](LICENSE). This MIT license applies to the repository software;
+it does not relicense the Burns source material, generated Burns-derived data,
+or the external CUC corpus.
+
+### Burns source material and generated artifacts
 
 The source Workbooks and thesis are © Duncan Coe Burns (2003) and are made
 available under a **Creative Commons Attribution-NonCommercial-NoDerivs 2.5**
@@ -231,3 +245,7 @@ kept local and are not committed or redistributed by this repository. Do not
 redistribute generated CSV/TF artifacts without permission from the copyright
 holder. Users can obtain the licensed source files from the link above and run
 the parsers/materializer for their own use.
+
+The reviewed Copenhagen Ugaritic Corpus (CUC) base is an external dependency
+and is not redistributed by this repository; its upstream license remains
+separate from both this software license and the Burns source terms.
