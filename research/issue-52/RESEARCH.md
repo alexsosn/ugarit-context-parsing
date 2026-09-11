@@ -24,37 +24,50 @@ The reviewed commit exists upstream and is immutable:
 - commit: `ad69400f5446e1c8217af01659c7c10ab00c015b`;
 - TF directory passed to Burns: `cuc/tf/0.2.8` after checkout.
 
+At research time upstream `main` points to this exact commit. The documentation must nevertheless remain correct after normal upstream advancement rather than relying on this commit continuing to be an advertised branch tip.
+
 Burns independently validates the reviewed required CUC files by exact size/SHA-256 and validates the expected Text-Fabric structure/counts before alignment. Acquisition therefore does not become a new trust bypass: an incorrect/incomplete checkout fails before module publication.
 
 ## Acquisition options considered
 
 ### Full clone + checkout
 
-`git clone` followed by `git checkout --detach <sha>` is easy to understand but downloads unnecessary repository history.
+`git clone` followed by `git checkout --detach <sha>` is easy to understand and remains valid while the reviewed commit is retained in normal upstream history, but a normal clone downloads historical file contents unnecessarily.
 
 ### Archive URL
 
-A GitHub commit archive avoids history, but introduces `curl`/archive extraction and a SHA-derived directory name. It is less uniform with ordinary Git-based developer workflows.
+A GitHub commit archive avoids history, but introduces `curl`/archive extraction and a SHA-derived directory or tar-specific path manipulation. It is less uniform with ordinary Git-based workflows and makes local commit inspection less direct.
 
-### Minimal Git fetch — selected
+### Raw-SHA shallow fetch — rejected after adversarial review
 
-Use an empty local repository, add the canonical upstream remote, fetch only the exact reviewed commit at depth 1, then detached-checkout `FETCH_HEAD`:
+The first GREEN draft used an empty repository plus:
 
 ```bash
-git init cuc
-git -C cuc remote add origin https://github.com/DT-UCPH/cuc.git
 git -C cuc fetch --depth 1 origin ad69400f5446e1c8217af01659c7c10ab00c015b
-git -C cuc checkout --detach FETCH_HEAD
+```
+
+This works while the SHA is advertised/reachable under the server's fetch policy, including the current state where it is `main`. Long-lived documentation should not depend on a hosting service continuing to permit direct wants for a raw object ID after refs move. The reviewed identity is a commit, but acquisition should use normal repository history semantics rather than a raw-object fetch assumption.
+
+### Blob-filtered clone + exact detached checkout — selected
+
+Use a partial clone that omits historical blob contents, then checkout the reviewed commit explicitly:
+
+```bash
+git clone --filter=blob:none --no-checkout https://github.com/DT-UCPH/cuc.git cuc
+git -C cuc checkout --detach ad69400f5446e1c8217af01659c7c10ab00c015b
+git -C cuc rev-parse HEAD
 ```
 
 Properties:
 
-- explicitly names the immutable reviewed commit;
-- avoids silently following upstream `main`;
-- avoids downloading unrelated history;
+- explicitly checks out the immutable reviewed commit rather than whatever `main` points to at use time;
+- remains usable after ordinary upstream advancement because the reviewed commit remains in repository history;
+- `--filter=blob:none` avoids downloading historical file contents and fetches the checked-out blobs on demand;
 - keeps network acquisition visibly outside the converter;
-- leaves a normal Git worktree whose commit can be inspected locally;
+- leaves a normal Git worktree whose exact HEAD can be inspected locally;
 - produces the stable path `cuc/tf/0.2.8` used by the module command.
+
+Burns' own fingerprint verifier remains the authoritative product gate for the CUC TF files; the Git commands are a reproducible acquisition recipe, not a bypass.
 
 ## Installation boundary
 
