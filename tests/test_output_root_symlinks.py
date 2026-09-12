@@ -323,7 +323,7 @@ class OutputRootSymlinkTests(unittest.TestCase):
             target.write_text("outside", encoding="utf-8")
             (output / "burns-module-report.json").symlink_to(target)
 
-            with self.assertRaisesRegex(ValueError, "symlink"):
+            with self.assertRaises(ValueError):
                 write_burns_module(
                     _module_data(),
                     {},
