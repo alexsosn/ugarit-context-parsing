@@ -77,6 +77,8 @@ def _source():
                 depth="d\n2",
                 disputed="?",
             ),
+            # Distinct annotation identity, same exact lexical CUC word after
+            # the documented matching-only editorial suffix is stripped.
             _record(2, headword="bʿl*", references="I.2"),
             _record(3, headword="bʿl mlk", references="I.3"),
             _record(4, headword="mlk x", references="I.3"),
@@ -313,6 +315,7 @@ class BurnsTfModuleTests(unittest.TestCase):
     def test_missing_or_mismatched_cuc_compatibility_fails_closed(self):
         source = _source()
         unbound = _index(compatibility=None)
+        # `_index()` uses the reviewed identity by default, so explicitly replace it.
         unbound = replace(unbound, compatibility=None)
         with self.assertRaises(ValueError):
             build_burns_module(source, align_burns_source(source, unbound), unbound)
@@ -453,6 +456,8 @@ class BurnsTfModuleTests(unittest.TestCase):
             def flaky_replace(path: Path, target):
                 nonlocal install_count
                 target_path = Path(target)
+                # Backup moves target the hidden backup directory. Fail only
+                # during the second stage->output installation move.
                 if path.parent != output and target_path.parent == output:
                     install_count += 1
                     if install_count == 2:
