@@ -710,27 +710,58 @@ def _validate_module_for_write(module: BurnsModuleData, report: Mapping[str, obj
     )
 
 
-def _validate_existing_module_output(output: Path) -> None:
+def _validate_existing_module_output(output: Path) -> tuple[Path, ...]:
     prepare_output_root(output, label="Burns module")
     if not output.exists():
-        return
+        return ()
 
-    for path in sorted(output.glob("*.tf"), key=lambda item: item.name):
+    tf_paths = sorted(output.glob("*.tf"), key=lambda item: item.name)
+    report_path = output / REPORT_FILE
+    has_report = report_path.exists() or report_path.is_symlink()
+    if not tf_paths and not has_report:
+        return ()
+
+    for path in tf_paths:
         if path.is_symlink():
             raise ValueError(f"existing Burns module TF candidate is a symlink: {path.name}")
         if not path.is_file():
             raise ValueError(f"existing Burns module TF candidate is not a regular file: {path.name}")
-        if not path.name.startswith("burns_"):
-            raise ValueError(
-                "refusing to publish Burns module into directory containing non-Burns TF files: "
-                + path.name
-            )
 
-    report = output / REPORT_FILE
-    if report.is_symlink():
+    actual_tf = frozenset(path.name for path in tf_paths)
+    if actual_tf != _EXPECTED_TF_FILES:
+        missing = sorted(_EXPECTED_TF_FILES - actual_tf)
+        extra = sorted(actual_tf - _EXPECTED_TF_FILES)
+        details: list[str] = []
+        if missing:
+            details.append("missing=" + ",".join(missing))
+        if extra:
+            details.append("unexpected=" + ",".join(extra))
+        raise ValueError(
+            "existing Burns module feature inventory is not exactly owned: "
+            + "; ".join(details)
+        )
+
+    if report_path.is_symlink():
         raise ValueError("existing Burns module report is a symlink")
-    if report.exists() and not report.is_file():
+    if not report_path.exists():
+        raise ValueError("existing Burns module ownership report is missing")
+    if not report_path.is_file():
         raise ValueError("existing Burns module report is not a regular file")
+
+    try:
+        existing_report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("existing Burns module ownership report is invalid") from exc
+    if not isinstance(existing_report, dict):
+        raise ValueError("existing Burns module ownership report is invalid")
+    if existing_report.get("schema") != MODULE_REPORT_SCHEMA:
+        raise ValueError("existing Burns module ownership report schema is invalid")
+    if existing_report.get("feature_inventory") != sorted(FEATURES):
+        raise ValueError("existing Burns module report feature inventory is invalid")
+    if existing_report.get("cuc_compatibility") != reviewed_cuc_compatibility_payload():
+        raise ValueError("existing Burns module report compatibility is invalid")
+
+    return tuple(tf_paths + [report_path])
 
 
 def _validate_staged_module_tf(stage: Path) -> None:
@@ -759,11 +790,7 @@ def _validate_staged_module_tf(stage: Path) -> None:
 
 def _publish(stage: Path, output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
-    old_owned = sorted(
-        [path for path in output.glob("burns_*.tf") if path.is_file()]
-        + ([output / REPORT_FILE] if (output / REPORT_FILE).is_file() else []),
-        key=lambda path: path.name,
-    )
+    old_owned = list(_validate_existing_module_output(output))
 
     with TemporaryDirectory(prefix=".burns-module-backup-", dir=output.parent) as backup_dir:
         backup = Path(backup_dir)
