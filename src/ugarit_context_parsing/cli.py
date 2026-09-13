@@ -96,7 +96,11 @@ def _run_module(args: argparse.Namespace) -> int:
     alignments = align_burns_source(normalized, index)
     module = build_burns_module(normalized, alignments, index)
     report = build_burns_module_report(normalized, alignments, index, module)
-    if not write_burns_module(module, report, args.output):
+    try:
+        saved = write_burns_module(module, report, args.output)
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise SystemExit(f"module publication failed: {exc}") from exc
+    if not saved:
         raise SystemExit("Text-Fabric refused the generated Burns module")
 
     print(
@@ -122,7 +126,11 @@ def _run_convert(args: argparse.Namespace) -> int:
         data,
         source_format=args.input_format,
     )
-    if not write_artifact(data, report, args.output):
+    try:
+        saved = write_artifact(data, report, args.output)
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise SystemExit(f"legacy publication failed: {exc}") from exc
+    if not saved:
         raise SystemExit("Text-Fabric refused the generated dataset")
     print(
         f"converted {len(source.files)} Workbook {args.input_format.upper()} files / "
